@@ -1,6 +1,7 @@
 import {
 	Platform,
 	PluginSettingTab,
+	Setting,
 	type Plugin,
 	type SettingDefinitionItem,
 } from "obsidian";
@@ -180,5 +181,108 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 	private async persist(): Promise<void> {
 		await this.host.saveSettings();
 		this.host.onSettingsChanged();
+	}
+
+	/**
+	 * Imperative fallback for Obsidian < 1.13 — newer versions render
+	 * getSettingDefinitions() and never call this (the folder list becomes
+	 * a plain one-per-line textarea here).
+	 */
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
+		const settings = this.host.settings;
+
+		new Setting(containerEl)
+			.setName("Hotkey")
+			.setDesc(
+				'Searchosaurus ships without a default hotkey. Bind "Searchosaurus: Open search" under Settings → Hotkeys.',
+			);
+
+		new Setting(containerEl)
+			.setName("Excluded folders")
+			.setDesc("One folder path per line. Files under these paths are not indexed.")
+			.addTextArea((text) =>
+				text
+					.setPlaceholder("templates/\narchive/")
+					.setValue(settings.excludedFolders.join("\n"))
+					.onChange(async (value) => {
+						settings.excludedFolders = value
+							.split("\n")
+							.map((line) => line.trim())
+							.filter((line) => line.length > 0);
+						await this.persist();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Result limit")
+			.setDesc("Maximum number of results shown at once.")
+			.addSlider((slider) =>
+				slider
+					.setLimits(10, 200, 10)
+					.setValue(settings.resultLimit)
+					.onChange(async (value) => {
+						settings.resultLimit = value;
+						await this.persist();
+					}),
+			);
+
+		new Setting(containerEl).setName("Text extraction").setHeading();
+
+		new Setting(containerEl)
+			.setName("Search text in images (OCR)")
+			.setDesc(
+				Platform.isDesktop
+					? "Runs fully offline. Enabling downloads the recognition models (~8 MB) once from the plugin's GitHub release."
+					: "OCR runs on desktop only. Results synced from a desktop device are still searchable here.",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(settings.ocrEnabled)
+					.setDisabled(!Platform.isDesktop)
+					.onChange(async (value) => {
+						settings.ocrEnabled = value;
+						await this.persist();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("OCR languages")
+			.setDesc("Which recognition models to use for images.")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("deu+eng", "German + English")
+					.addOption("deu", "German")
+					.addOption("eng", "English")
+					.setValue(settings.ocrLanguages.join("+"))
+					.onChange(async (value) => {
+						settings.ocrLanguages = value.split("+");
+						await this.persist();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Index PDF text")
+			.setDesc("Extract the text layer of PDFs so their content is searchable.")
+			.addToggle((toggle) =>
+				toggle.setValue(settings.indexPdfText).onChange(async (value) => {
+					settings.indexPdfText = value;
+					await this.persist();
+				}),
+			);
+
+		new Setting(containerEl).setName("Maintenance").setHeading();
+
+		new Setting(containerEl)
+			.setName("Rebuild search index")
+			.setDesc("Drops the cached index and re-reads the whole vault.")
+			.addButton((button) =>
+				button.setButtonText("Rebuild").onClick(async () => {
+					button.setDisabled(true).setButtonText("Rebuilding…");
+					await this.host.rebuildIndex();
+					button.setDisabled(false).setButtonText("Rebuild");
+				}),
+			);
 	}
 }
