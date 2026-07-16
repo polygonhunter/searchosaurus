@@ -22,7 +22,7 @@ const ASSET_RELEASE_URL =
  * Pin before every ocr-assets release: sha256 of the zip. Empty string
  * skips verification (dev builds, where esbuild pre-copies the files).
  */
-const ASSET_SHA256 = "";
+const ASSET_SHA256 = "003c3b91961e3275c83f4e1e8e8f27dc1537999e6015adf24b7a65e6ea81ef61";
 
 export function assetDir(manifestDir: string): string {
 	return normalizePath(`${manifestDir}/assets`);
