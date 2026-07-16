@@ -58,6 +58,12 @@ Searchosaurus ships without a default hotkey. Bind **“Searchosaurus: Open sear
 
 To search text inside images, enable **OCR** in the plugin settings: the recognition models (~8 MB) download once from this repository's releases, then everything runs locally. Extracted text is cached and synced, so other devices never re-run the work.
 
+## Privacy & network use
+
+Searchosaurus works entirely offline. It makes exactly **one** kind of network request, and only if you opt in: when you enable OCR in the settings, it downloads the recognition models once (a ~4 MB zip from [this repository's releases](https://github.com/polygonhunter/searchosaurus/releases/tag/ocr-assets-v1), verified against a pinned SHA-256 checksum). After that, everything — indexing, search, OCR — runs locally. No telemetry, no analytics, and nothing from your vault ever leaves your device.
+
+For transparency about what the automated scans see: the bundled tesseract.js library contains `fetch`/base64 code paths used to load its own worker and WASM core **from your local plugin folder**, and the clipboard is only touched when you press `⌘C` to copy a link to a result.
+
 ## Roadmap
 
 - Per-note sub-matches (VS Code style)

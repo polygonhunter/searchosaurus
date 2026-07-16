@@ -22,8 +22,13 @@ export function weightsHash(weights: FieldWeights): string {
 function asPromise<T>(request: IDBRequest<T>): Promise<T> {
 	return new Promise((resolve, reject) => {
 		request.onsuccess = () => resolve(request.result);
+		// DOMException is not an Error subtype — always wrap.
 		request.onerror = () =>
-			reject(request.error ?? new Error("Searchosaurus: IndexedDB request failed"));
+			reject(
+				new Error(
+					`Searchosaurus: IndexedDB request failed${request.error ? `: ${request.error.message}` : ""}`,
+				),
+			);
 	});
 }
 
