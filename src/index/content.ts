@@ -26,6 +26,13 @@ function emptyDoc(file: TFile): IndexedDoc {
 	};
 }
 
+/** Attachment doc, optionally carrying OCR/PDF-extracted text. */
+export function attachmentDoc(file: TFile, extractedText = ""): IndexedDoc {
+	const doc = emptyDoc(file);
+	doc.extractedText = extractedText;
+	return doc;
+}
+
 /**
  * Build the index doc(s) for one vault file. Notes get their metadata-cache
  * fields plus one link doc per external URL; attachments start as

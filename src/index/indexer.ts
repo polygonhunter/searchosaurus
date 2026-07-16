@@ -23,6 +23,8 @@ export class Indexer {
 	private readonly queued = new Set<string>();
 	private processing = false;
 	private stopped = false;
+	/** False during the initial build — extraction jobs queue at low prio. */
+	private initialBuildDone = false;
 
 	/** True while the initial build/diff still has queued work. */
 	get busy(): boolean {
@@ -34,6 +36,8 @@ export class Indexer {
 		private readonly engine: SearchEngine,
 		private readonly weights: FieldWeights,
 		private readonly getSettings: () => SearchosaurusSettings,
+		/** Attachment hook: the OCR/PDF pipeline decides what to extract. */
+		private readonly onAttachment?: (file: TFile, priority: "high" | "low") => void,
 	) {
 		// appId is undocumented but stable — used to key the per-vault cache.
 		const appId = (app as unknown as { appId?: string }).appId ?? "default";
@@ -163,7 +167,13 @@ export class Indexer {
 		} finally {
 			this.processing = false;
 		}
+		this.initialBuildDone = true;
 		if (!this.stopped) this.saveSoon();
+	}
+
+	/** Let collaborators (OCR pipeline) schedule an index snapshot. */
+	persistSoon(): void {
+		this.saveSoon();
 	}
 
 	private async indexPath(path: string): Promise<void> {
@@ -183,6 +193,9 @@ export class Indexer {
 			}
 			this.linkDocs.set(file.path, [...newLinkIds]);
 			this.indexedFiles.set(file.path, file.stat.mtime);
+			if (docs[0] && docs[0].kind !== "note") {
+				this.onAttachment?.(file, this.initialBuildDone ? "high" : "low");
+			}
 		} catch (error) {
 			console.error(`Searchosaurus: failed to index ${path}`, error);
 		}

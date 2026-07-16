@@ -1,4 +1,4 @@
-import { PluginSettingTab, Setting, type App, type Plugin } from "obsidian";
+import { Platform, PluginSettingTab, Setting, type App, type Plugin } from "obsidian";
 
 export interface SearchosaurusSettings {
 	/** Path prefixes excluded from the index (and from OCR). */
@@ -83,7 +83,48 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// OCR settings land with the OCR milestone; keeping the tab minimal
-		// until the toggle can actually download assets and run.
+		new Setting(containerEl).setName("Text extraction").setHeading();
+
+		new Setting(containerEl)
+			.setName("Search text in images (OCR)")
+			.setDesc(
+				Platform.isDesktop
+					? "Runs fully offline. Enabling downloads the recognition models (~8 MB) once from the plugin's GitHub release; images are then processed in the background and cached."
+					: "OCR runs on desktop only. Results synced from a desktop device are still searchable here.",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(settings.ocrEnabled)
+					.setDisabled(!Platform.isDesktop)
+					.onChange(async (value) => {
+						settings.ocrEnabled = value;
+						await save();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("OCR languages")
+			.setDesc("Which recognition models to use for images.")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("deu+eng", "German + English")
+					.addOption("deu", "German")
+					.addOption("eng", "English")
+					.setValue(settings.ocrLanguages.join("+"))
+					.onChange(async (value) => {
+						settings.ocrLanguages = value.split("+");
+						await save();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Index PDF text")
+			.setDesc("Extract the text layer of PDFs so their content is searchable.")
+			.addToggle((toggle) =>
+				toggle.setValue(settings.indexPdfText).onChange(async (value) => {
+					settings.indexPdfText = value;
+					await save();
+				}),
+			);
 	}
 }

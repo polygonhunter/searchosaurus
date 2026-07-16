@@ -1,9 +1,11 @@
-import { debounce, Plugin } from "obsidian";
+import { debounce, Platform, Plugin } from "obsidian";
 import { SearchEngine } from "./core/engine";
 import { bumpFrecency, pruneFrecency, renameFrecency } from "./core/frecency";
 import { DEFAULT_WEIGHTS } from "./core/types";
 import { DEFAULT_DATA, type PersistentData } from "./data";
 import { Indexer } from "./index/indexer";
+import { ensureAssets } from "./ocr/assets";
+import { OcrPipeline } from "./ocr/pipeline";
 import {
 	DEFAULT_SETTINGS,
 	SearchosaurusSettingTab,
@@ -23,11 +25,25 @@ export default class SearchosaurusPlugin extends Plugin {
 
 	private engine: SearchEngine = new SearchEngine(DEFAULT_WEIGHTS);
 	private indexer: Indexer | null = null;
+	private pipeline: OcrPipeline | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
-		this.indexer = new Indexer(this.app, this.engine, DEFAULT_WEIGHTS, () => this.settings);
+		this.pipeline = new OcrPipeline(
+			this.app,
+			this.engine,
+			() => this.settings,
+			this.manifest.dir ?? "",
+			() => this.indexer?.persistSoon(),
+		);
+		this.indexer = new Indexer(
+			this.app,
+			this.engine,
+			DEFAULT_WEIGHTS,
+			() => this.settings,
+			(file, priority) => this.pipeline?.consider(file, priority),
+		);
 
 		this.addCommand({
 			id: "open-search",
@@ -66,18 +82,30 @@ export default class SearchosaurusPlugin extends Plugin {
 		// Index once the workspace (and metadata cache) is ready; search is
 		// usable immediately with whatever the startup cache already holds.
 		this.app.workspace.onLayoutReady(() => {
-			void this.indexer?.start(this);
+			void (async () => {
+				await this.pipeline?.init(this);
+				await this.indexer?.start(this);
+			})();
 		});
 	}
 
 	onunload(): void {
 		this.indexer?.stop();
 		this.indexer = null;
+		void this.pipeline?.destroy();
+		this.pipeline = null;
 	}
 
 	/** Called by the settings tab after any change. */
 	onSettingsChanged(): void {
-		// Exclusion/limit changes apply lazily; nothing to re-wire yet.
+		if (this.settings.ocrEnabled && Platform.isDesktop) {
+			// One-time asset download, then sweep existing images/PDFs.
+			void ensureAssets(this.app, this.manifest.dir ?? "").then((ok) => {
+				if (ok) this.pipeline?.scanVault();
+			});
+		} else if (this.settings.indexPdfText) {
+			this.pipeline?.scanVault();
+		}
 	}
 
 	async loadSettings(): Promise<void> {
