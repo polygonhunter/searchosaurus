@@ -27,6 +27,8 @@ export interface SettingsHost extends Plugin {
 	saveSettings(): Promise<void>;
 	/** Re-apply anything derived from settings (index filters, OCR state). */
 	onSettingsChanged(): void;
+	/** Drop the index and every cache, then re-index from scratch. */
+	rebuildIndex(): Promise<void>;
 }
 
 export class SearchosaurusSettingTab extends PluginSettingTab {
@@ -124,6 +126,21 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 				toggle.setValue(settings.indexPdfText).onChange(async (value) => {
 					settings.indexPdfText = value;
 					await save();
+				}),
+			);
+
+		new Setting(containerEl).setName("Maintenance").setHeading();
+
+		new Setting(containerEl)
+			.setName("Rebuild search index")
+			.setDesc(
+				"Drops the cached index and re-reads the whole vault. Use after bulk changes outside Obsidian or if results ever look stale.",
+			)
+			.addButton((button) =>
+				button.setButtonText("Rebuild").onClick(async () => {
+					button.setDisabled(true).setButtonText("Rebuilding…");
+					await this.host.rebuildIndex();
+					button.setDisabled(false).setButtonText("Rebuild");
 				}),
 			);
 	}

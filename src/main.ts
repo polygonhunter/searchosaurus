@@ -108,6 +108,11 @@ export default class SearchosaurusPlugin extends Plugin {
 		}
 	}
 
+	async rebuildIndex(): Promise<void> {
+		await this.indexer?.rebuild();
+		this.pipeline?.scanVault();
+	}
+
 	async loadSettings(): Promise<void> {
 		const raw = (await this.loadData()) as Partial<StoredShape> | null;
 		this.settings = { ...DEFAULT_SETTINGS, ...(raw?.settings ?? {}) };

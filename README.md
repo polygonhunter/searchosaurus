@@ -6,9 +6,9 @@
 
 <p align="center"><b>The note you meant. First.</b></p>
 
-Searchosaurus is Spotlight for your vault. Press a hotkey, type a few letters, and the right note is already at the top — not buried under thirty notes that merely *mention* it. It searches notes, files, images and even the links you saved inside your notes, and with OCR turned on, the text inside your screenshots and PDFs becomes searchable too. Entirely offline.
+Searchosaurus is Spotlight for your vault. Press a hotkey, type a few letters, and the right note is already at the top — not buried under thirty notes that merely *mention* it. It searches notes, files, images and even the links you saved inside your notes, previews everything live, and with OCR turned on, the text inside your screenshots and PDFs becomes searchable too. Entirely offline.
 
-I built Searchosaurus because Obsidian's built-in search kept failing me at the simplest task: I search for a person who has their own note, and instead of that note I get every journal entry that ever linked to them. A search should know that an exact title match *is* the answer. So Searchosaurus ranks deterministically — exact title or alias first, title prefixes second, everything else by relevance — and wraps it in a clean, quiet panel that shows nothing but your results.
+I built Searchosaurus because Obsidian's built-in search kept failing me at the simplest task: I search for a person who has their own note, and instead of that note I get every journal entry that ever linked to them. A search should know that an exact title match *is* the answer. So Searchosaurus ranks deterministically — exact title or alias first, title prefixes second, everything else by relevance — and wraps it in a clean, quiet glass panel that shows nothing but your results.
 
 Searchosaurus is the third plugin in the -osaurus family, next to [**Linkosaurus**](https://github.com/polygonhunter/linkosaurus) and [**Scalosaurus**](https://github.com/polygonhunter/scalosaurus). If something feels off or you have an idea, [open an issue on GitHub](https://github.com/polygonhunter/searchosaurus/issues); I read everything.
 
@@ -22,40 +22,57 @@ Say your vault has a note `People/Mira Holt.md` (alias `Miri`) plus a dozen jour
 | `miri` | **Mira Holt** (alias match) |
 | `mi ho` | **Mira Holt** (word-prefix match) |
 | `n design` | Only **notes** with "design" in the title |
-| `i whiteboard` | Only **images** — including OCR-found text |
+| `i rechnung` | Only **images** — including OCR-found text |
 | `l handbook` | Only saved **links**, searched by text and URL |
 | `#project mira` | Notes tagged `#project` matching "mira" |
 | `"design tokens"` | Only results containing that exact phrase |
+| `p:People/ mira mod:woche` | Scoped to a folder, modified this week |
 
 ## Highlights
 
 - **Title-first ranking** — an exact title or alias match is pinned to the top, always. Deterministic, not just "boosted".
-- **Four quiet filters** — notes, files, images, links; click the icons or just type `n `, `f `, `i `, `l ` in front of your query.
+- **Live preview** — the selected result renders beside the list: note excerpt with highlights, image thumbnail, PDF facts, link context. Find the right note without opening anything.
+- **Four quiet filters** — notes, files, images, links; click the icons or type `n `, `f `, `i `, `l ` in front of your query.
 - **Offline OCR** *(opt-in)* — text inside images and PDFs becomes findable. German + English models, downloaded once, no cloud ever.
-- **Radically clean** — a search field and results. Every power feature lives on the keyboard, invisible until you use it.
+- **A launcher when empty** — open it without typing and your pinned and frequently used notes are already there.
+- **Radically clean** — a search field and results. Everything else lives on the keyboard, invisible until you use it.
+
+## The keyboard layer
+
+| Key | Does |
+|-----|------|
+| `↵` | Open (scrolled to the match) |
+| `⌘↵` / `⌘⌥↵` | Open in new tab / split |
+| `⇥` | Insert a link to the result at your cursor |
+| `⌘C` | Copy a link to the result |
+| `⌘P` | Pin / unpin (pinned notes lead the launcher) |
+| `⌘1–9` | Open a result directly — numbers appear while ⌘ is held |
+| `→` / `←` | Drill into the notes linking here / back |
+| `↑` | Recall recent searches (empty input) |
+
+Unresolved `[[wikilinks]]` show up as quiet ghost rows — choosing one creates the note. A search with no matches offers to create the note instead of showing nothing.
 
 ## Setup
 
 Searchosaurus ships without a default hotkey. Bind **“Searchosaurus: Open search”** under *Settings → Hotkeys* — `Cmd/Ctrl+F` (replacing “Search current file”) or `Cmd/Ctrl+Shift+F` work well.
 
-## Status
+To search text inside images, enable **OCR** in the plugin settings: the recognition models (~8 MB) download once from this repository's releases, then everything runs locally. Extracted text is cached and synced, so other devices never re-run the work.
 
-Early development.
+## Roadmap
 
-### Roadmap
-
-- Spotlight-style panel with live preview
-- Quick actions, pins, backlink drill-down, frecency launcher
 - Per-note sub-matches (VS Code style)
-- Office document text extraction, OCR for scanned PDFs
+- Related notes
+- Office document text extraction (docx, xlsx)
+- OCR for scanned PDFs
 
 ## Development
 
 ```bash
 npm install
-npm run dev     # watch build into test-vault/ (pjeby/hot-reload)
-npm run test    # vitest over src/core
-npm run build   # type-check + production bundle
+npm run fetch-ocr-assets   # once, for OCR in the dev vault
+npm run dev                # watch build into test-vault/ (pjeby/hot-reload)
+npm run test               # vitest over src/core
+npm run build              # type-check + production bundle
 ```
 
 ## License
