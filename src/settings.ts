@@ -1,6 +1,7 @@
 import {
 	Platform,
 	PluginSettingTab,
+	requireApiVersion,
 	Setting,
 	type Plugin,
 	type SettingDefinitionItem,
@@ -184,11 +185,16 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Imperative fallback for Obsidian < 1.13 — newer versions render
-	 * getSettingDefinitions() and never call this (the folder list becomes
-	 * a plain one-per-line textarea here).
+	 * display() stays the render entry point on every Obsidian version —
+	 * on 1.13+ the BASE implementation renders getSettingDefinitions()
+	 * (folder-picker list included), so delegate there and only render the
+	 * imperative fallback (folders as a plain textarea) on older apps.
 	 */
 	display(): void {
+		if (requireApiVersion("1.13.0")) {
+			super.display();
+			return;
+		}
 		const { containerEl } = this;
 		containerEl.empty();
 		const settings = this.host.settings;
