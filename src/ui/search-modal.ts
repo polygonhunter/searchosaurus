@@ -73,13 +73,17 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		this.limit = host.settings().resultLimit;
 
 		// Custom chrome around the (public) input and result containers:
-		// input · filter row · [ results | preview ] · hint line.
+		// input · filter row · [ results | preview ] · hint line. Insert
+		// relative to the result container's REAL parent — on mobile it is
+		// not a direct child of modalEl, and inserting against the wrong
+		// parent throws (which killed the modal on phones).
+		const resultsParent = this.resultContainerEl.parentElement ?? this.modalEl;
 		const row = createDiv();
-		this.modalEl.insertBefore(row, this.resultContainerEl);
+		resultsParent.insertBefore(row, this.resultContainerEl);
 		this.filterRow = new FilterRow(row, this.filterState, () => this.refresh());
 
 		const body = createDiv({ cls: "searchosaurus-body" });
-		this.modalEl.insertBefore(body, this.resultContainerEl);
+		resultsParent.insertBefore(body, this.resultContainerEl);
 		body.appendChild(this.resultContainerEl);
 		this.preview = new PreviewPane(app, body.createDiv(), (empty) =>
 			this.modalEl.toggleClass("is-preview-empty", empty),

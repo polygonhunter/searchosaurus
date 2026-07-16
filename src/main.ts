@@ -1,4 +1,4 @@
-import { debounce, Platform, Plugin } from "obsidian";
+import { debounce, Notice, Platform, Plugin } from "obsidian";
 import { SearchEngine } from "./core/engine";
 import { bumpFrecency, pruneFrecency, renameFrecency } from "./core/frecency";
 import { DEFAULT_WEIGHTS } from "./core/types";
@@ -46,12 +46,24 @@ export default class SearchosaurusPlugin extends Plugin {
 		);
 
 		const openSearch = () => {
-			new SearchosaurusModal(this.app, {
-				engine: this.engine,
-				settings: () => this.settings,
-				data: this.data,
-				saveDataSoon: () => this.saveDataSoon(),
-			}).open();
+			// Deferred a tick: command pickers and the mobile Quick Action
+			// overlay dismiss themselves right after invoking a command and
+			// would sweep a synchronously opened modal away with them.
+			window.setTimeout(() => {
+				try {
+					new SearchosaurusModal(this.app, {
+						engine: this.engine,
+						settings: () => this.settings,
+						data: this.data,
+						saveDataSoon: () => this.saveDataSoon(),
+					}).open();
+				} catch (error) {
+					console.error("Searchosaurus: failed to open search", error);
+					new Notice(
+						`Searchosaurus: failed to open search — ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+			}, 0);
 		};
 
 		this.addCommand({
