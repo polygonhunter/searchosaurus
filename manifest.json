@@ -1,8 +1,8 @@
 {
 	"id": "searchosaurus",
 	"name": "Searchosaurus",
-	"version": "0.1.0",
-	"minAppVersion": "1.12.4",
+	"version": "0.1.1",
+	"minAppVersion": "1.13.0",
 	"description": "Spotlight-style search — the note you meant comes first, with type filters, previews, and offline OCR that makes text in images and PDFs findable.",
 	"author": "polygonhunter",
 	"isDesktopOnly": false

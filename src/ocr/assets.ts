@@ -61,9 +61,10 @@ export async function downloadAssets(app: App, manifestDir: string): Promise<voi
 		for (const name of ASSET_FILES) {
 			const content = files[name];
 			if (!content) throw new Error(`OCR asset bundle is missing ${name}`);
+			// Copy into a fresh, exactly-sized buffer for writeBinary.
 			await app.vault.adapter.writeBinary(
 				normalizePath(`${dir}/${name}`),
-				content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer,
+				new Uint8Array(content).buffer,
 			);
 		}
 		notice.setMessage("Searchosaurus: OCR ready.");

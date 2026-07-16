@@ -161,7 +161,7 @@ export class Indexer {
 				await this.indexPath(path);
 				if (++sinceYield >= CHUNK_SIZE) {
 					sinceYield = 0;
-					await new Promise((resolve) => setTimeout(resolve, 0));
+					await new Promise((resolve) => window.setTimeout(resolve, 0));
 				}
 			}
 		} finally {

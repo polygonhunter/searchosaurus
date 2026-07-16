@@ -20,8 +20,11 @@ export class PreviewPane {
 	constructor(
 		private readonly app: App,
 		private readonly el: HTMLElement,
+		/** Layout hook: lets the modal give the list full width when empty. */
+		private readonly onEmptyChange?: (empty: boolean) => void,
 	) {
 		el.addClass("searchosaurus-preview", "is-empty");
+		onEmptyChange?.(true);
 	}
 
 	destroy(): void {
@@ -34,6 +37,7 @@ export class PreviewPane {
 		this.destroy();
 		this.el.empty();
 		this.el.addClass("is-empty");
+		this.onEmptyChange?.(true);
 	}
 
 	async show(hit: SearchHit, queryWords: readonly string[]): Promise<void> {
@@ -64,6 +68,7 @@ export class PreviewPane {
 
 		this.el.empty();
 		this.el.removeClass("is-empty");
+		this.onEmptyChange?.(false);
 		while (next.firstChild) this.el.appendChild(next.firstChild);
 		this.el.createDiv({ cls: "searchosaurus-preview-path", text: hit.path });
 	}
@@ -161,8 +166,7 @@ function markMatches(root: HTMLElement, queryWords: readonly string[]): void {
 			if (earliest === -1) break;
 			const matchNode = current.splitText(earliest);
 			const rest = matchNode.splitText(length);
-			const mark = root.doc.createElement("mark");
-			mark.className = "searchosaurus-mark";
+			const mark = createEl("mark", { cls: "searchosaurus-mark" });
 			matchNode.replaceWith(mark);
 			mark.appendChild(matchNode);
 			marks += 1;

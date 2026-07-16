@@ -6,15 +6,11 @@
 
 /* ---- the floating glass panel ---- */
 
-.modal-container:has(> .searchosaurus-modal) {
-	--searchosaurus-glass: color-mix(in srgb, var(--background-primary) 74%, transparent);
-}
-
 .searchosaurus-modal.prompt {
 	width: min(780px, 92vw);
 	max-height: min(64vh, 620px);
 	border-radius: 22px;
-	background-color: var(--searchosaurus-glass, var(--background-primary));
+	background-color: color-mix(in srgb, var(--background-primary) 74%, transparent);
 	-webkit-backdrop-filter: blur(30px) saturate(1.7);
 	backdrop-filter: blur(30px) saturate(1.7);
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
@@ -138,7 +134,8 @@
 	display: none;
 }
 
-.searchosaurus-modal:has(.searchosaurus-preview.is-empty) .prompt-results {
+/* toggled from JS when the preview has nothing to show */
+.searchosaurus-modal.is-preview-empty .prompt-results {
 	flex-basis: 100%;
 }
 

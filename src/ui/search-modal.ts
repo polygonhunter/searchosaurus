@@ -1,4 +1,4 @@
-import { Keymap, Notice, setIcon, SuggestModal, type App, type TFile } from "obsidian";
+import { Keymap, Notice, setIcon, SuggestModal, type App, type PaneType } from "obsidian";
 import type { SearchEngine } from "../core/engine";
 import { TITLE_FIELDS } from "../core/engine";
 import { topFrecent } from "../core/frecency";
@@ -81,7 +81,9 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		const body = createDiv({ cls: "searchosaurus-body" });
 		this.modalEl.insertBefore(body, this.resultContainerEl);
 		body.appendChild(this.resultContainerEl);
-		this.preview = new PreviewPane(app, body.createDiv());
+		this.preview = new PreviewPane(app, body.createDiv(), (empty) =>
+			this.modalEl.toggleClass("is-preview-empty", empty),
+		);
 
 		// The one allowed piece of help: a single faint line, empty state only.
 		this.modalEl.createDiv({
@@ -104,8 +106,8 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		});
 	}
 
-	onOpen(): void {
-		super.onOpen();
+	async onOpen(): Promise<void> {
+		await super.onOpen();
 		// Stagger the very first result paint only — never on keystrokes.
 		this.modalEl.addClass("is-entering");
 		window.setTimeout(() => this.modalEl.removeClass("is-entering"), ENTER_DURATION_MS);
@@ -559,7 +561,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	 * line when eState.line is set, which is exactly the "where did I land"
 	 * moment we want.
 	 */
-	private async openNoteAtMatch(hit: SearchHit, paneType: boolean | string): Promise<void> {
+	private async openNoteAtMatch(hit: SearchHit, paneType: boolean | PaneType): Promise<void> {
 		let line: number | undefined;
 		if (this.currentWords.length > 0) {
 			const file = this.app.vault.getFileByPath(hit.path);
@@ -573,13 +575,13 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 	private async openFileAt(
 		hit: SearchHit,
-		paneType: boolean | string,
+		paneType: boolean | PaneType,
 		line: number | undefined,
 	): Promise<void> {
 		const file = this.app.vault.getFileByPath(hit.path);
 		if (!file) return;
-		const leaf = this.app.workspace.getLeaf(paneType as boolean);
-		await leaf.openFile(file as TFile, {
+		const leaf = this.app.workspace.getLeaf(paneType);
+		await leaf.openFile(file, {
 			eState: line !== undefined ? { line } : undefined,
 		});
 	}

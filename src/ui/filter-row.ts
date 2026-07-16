@@ -86,14 +86,16 @@ export class FilterRow {
 
 	/** Slide the pill under the active button (after layout has settled). */
 	private movePill(target: HTMLElement | null): void {
-		requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			if (!target) {
-				this.pill.style.opacity = "0";
+				this.pill.setCssStyles({ opacity: "0" });
 				return;
 			}
-			this.pill.style.opacity = "1";
-			this.pill.style.transform = `translateX(${target.offsetLeft}px)`;
-			this.pill.style.width = `${target.offsetWidth}px`;
+			this.pill.setCssStyles({
+				opacity: "1",
+				transform: `translateX(${target.offsetLeft}px)`,
+				width: `${target.offsetWidth}px`,
+			});
 		});
 	}
 }

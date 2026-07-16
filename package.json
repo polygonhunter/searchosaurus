@@ -1,6 +1,6 @@
 {
 	"name": "searchosaurus",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Spotlight-style search for Obsidian — exact-title results first, type filters, and offline OCR that makes text in images and PDFs findable.",
 	"main": "main.js",
 	"type": "module",
@@ -28,7 +28,6 @@
 	},
 	"dependencies": {
 		"fflate": "^0.8.2",
-		"localforage": "^1.10.0",
 		"minisearch": "^7.1.0",
 		"tesseract.js": "^6.0.1"
 	}

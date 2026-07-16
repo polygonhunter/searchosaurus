@@ -1,4 +1,9 @@
-import { Platform, PluginSettingTab, Setting, type App, type Plugin } from "obsidian";
+import {
+	Platform,
+	PluginSettingTab,
+	type Plugin,
+	type SettingDefinitionItem,
+} from "obsidian";
 
 export interface SearchosaurusSettings {
 	/** Path prefixes excluded from the index (and from OCR). */
@@ -31,117 +36,126 @@ export interface SettingsHost extends Plugin {
 	rebuildIndex(): Promise<void>;
 }
 
+/**
+ * Declarative settings (Obsidian ≥ 1.13): definitions render through the
+ * platform and show up in the settings search. Array-typed settings are
+ * mapped to/from their control strings in get/setControlValue.
+ */
 export class SearchosaurusSettingTab extends PluginSettingTab {
 	constructor(
-		app: App,
+		app: SettingsHost["app"],
 		private readonly host: SettingsHost,
 	) {
 		super(app, host);
 	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: "Hotkey",
+				desc: 'Searchosaurus ships without a default hotkey. Bind "Searchosaurus: Open search" under Settings → Hotkeys — Cmd/Ctrl+F (replacing "Search current file") or Cmd/Ctrl+Shift+F work well.',
+				aliases: ["keyboard", "shortcut"],
+			},
+			{
+				name: "Excluded folders",
+				desc: "One folder path per line. Files under these paths are not indexed.",
+				control: {
+					type: "textarea",
+					key: "excludedFolders",
+					placeholder: "templates/\narchive/",
+					rows: 3,
+				},
+			},
+			{
+				name: "Result limit",
+				desc: "Maximum number of results shown at once.",
+				control: { type: "slider", key: "resultLimit", min: 10, max: 200, step: 10 },
+			},
+			{
+				type: "group",
+				heading: "Text extraction",
+				items: [
+					{
+						name: "Search text in images (OCR)",
+						desc: Platform.isDesktop
+							? "Runs fully offline. Enabling downloads the recognition models (~8 MB) once from the plugin's GitHub release; images are then processed in the background and cached."
+							: "OCR runs on desktop only. Results synced from a desktop device are still searchable here.",
+						aliases: ["ocr", "tesseract", "image text"],
+						control: {
+							type: "toggle",
+							key: "ocrEnabled",
+							disabled: () => !Platform.isDesktop,
+						},
+					},
+					{
+						name: "OCR languages",
+						desc: "Which recognition models to use for images.",
+						control: {
+							type: "dropdown",
+							key: "ocrLanguages",
+							options: {
+								"deu+eng": "German + English",
+								deu: "German",
+								eng: "English",
+							},
+						},
+					},
+					{
+						name: "Index PDF text",
+						desc: "Extract the text layer of PDFs so their content is searchable.",
+						control: { type: "toggle", key: "indexPdfText" },
+					},
+				],
+			},
+			{
+				type: "group",
+				heading: "Maintenance",
+				items: [
+					{
+						name: "Rebuild search index",
+						desc: "Drops the cached index and re-reads the whole vault. Use after bulk changes outside Obsidian or if results ever look stale.",
+						action: () => void this.host.rebuildIndex(),
+					},
+				],
+			},
+		];
+	}
+
+	getControlValue(key: string): unknown {
 		const settings = this.host.settings;
+		switch (key) {
+			case "excludedFolders":
+				return settings.excludedFolders.join("\n");
+			case "ocrLanguages":
+				return settings.ocrLanguages.join("+");
+			default:
+				return (settings as unknown as Record<string, unknown>)[key];
+		}
+	}
 
-		const save = async () => {
-			await this.host.saveSettings();
-			this.host.onSettingsChanged();
-		};
-
-		new Setting(containerEl)
-			.setName("Hotkey")
-			.setDesc(
-				'Searchosaurus ships without a default hotkey. Bind "Searchosaurus: Open search" under Settings → Hotkeys — Cmd/Ctrl+F (replacing "Search current file") or Cmd/Ctrl+Shift+F work well.',
-			);
-
-		new Setting(containerEl)
-			.setName("Excluded folders")
-			.setDesc("One folder path per line. Files under these paths are not indexed.")
-			.addTextArea((text) =>
-				text
-					.setPlaceholder("templates/\narchive/")
-					.setValue(settings.excludedFolders.join("\n"))
-					.onChange(async (value) => {
-						settings.excludedFolders = value
-							.split("\n")
-							.map((line) => line.trim())
-							.filter((line) => line.length > 0);
-						await save();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Result limit")
-			.setDesc("Maximum number of results shown at once.")
-			.addSlider((slider) =>
-				slider
-					.setLimits(10, 200, 10)
-					.setValue(settings.resultLimit)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						settings.resultLimit = value;
-						await save();
-					}),
-			);
-
-		new Setting(containerEl).setName("Text extraction").setHeading();
-
-		new Setting(containerEl)
-			.setName("Search text in images (OCR)")
-			.setDesc(
-				Platform.isDesktop
-					? "Runs fully offline. Enabling downloads the recognition models (~8 MB) once from the plugin's GitHub release; images are then processed in the background and cached."
-					: "OCR runs on desktop only. Results synced from a desktop device are still searchable here.",
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(settings.ocrEnabled)
-					.setDisabled(!Platform.isDesktop)
-					.onChange(async (value) => {
-						settings.ocrEnabled = value;
-						await save();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("OCR languages")
-			.setDesc("Which recognition models to use for images.")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("deu+eng", "German + English")
-					.addOption("deu", "German")
-					.addOption("eng", "English")
-					.setValue(settings.ocrLanguages.join("+"))
-					.onChange(async (value) => {
-						settings.ocrLanguages = value.split("+");
-						await save();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Index PDF text")
-			.setDesc("Extract the text layer of PDFs so their content is searchable.")
-			.addToggle((toggle) =>
-				toggle.setValue(settings.indexPdfText).onChange(async (value) => {
-					settings.indexPdfText = value;
-					await save();
-				}),
-			);
-
-		new Setting(containerEl).setName("Maintenance").setHeading();
-
-		new Setting(containerEl)
-			.setName("Rebuild search index")
-			.setDesc(
-				"Drops the cached index and re-reads the whole vault. Use after bulk changes outside Obsidian or if results ever look stale.",
-			)
-			.addButton((button) =>
-				button.setButtonText("Rebuild").onClick(async () => {
-					button.setDisabled(true).setButtonText("Rebuilding…");
-					await this.host.rebuildIndex();
-					button.setDisabled(false).setButtonText("Rebuild");
-				}),
-			);
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		const settings = this.host.settings;
+		switch (key) {
+			case "excludedFolders":
+				settings.excludedFolders = String(value)
+					.split("\n")
+					.map((line) => line.trim())
+					.filter((line) => line.length > 0);
+				break;
+			case "ocrLanguages":
+				settings.ocrLanguages = String(value).split("+");
+				break;
+			case "resultLimit":
+				settings.resultLimit = Number(value);
+				break;
+			case "ocrEnabled":
+				settings.ocrEnabled = Boolean(value);
+				break;
+			case "indexPdfText":
+				settings.indexPdfText = Boolean(value);
+				break;
+		}
+		await this.host.saveSettings();
+		this.host.onSettingsChanged();
 	}
 }
