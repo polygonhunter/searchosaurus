@@ -2,6 +2,7 @@ import { Notice, Platform, loadPdfJs, type App, type Plugin, type TFile } from "
 import { kindForExtension } from "../core/classify";
 import type { SearchEngine } from "../core/engine";
 import { idleScheduler, OcrQueue } from "../core/ocr-queue";
+import { isPathExcluded } from "../core/paths";
 import type { SearchosaurusSettings } from "../settings";
 import { attachmentDoc } from "../index/content";
 import { assetsPresent } from "./assets";
@@ -61,7 +62,7 @@ export class OcrPipeline {
 	scanVault(priority: "high" | "low" = "low"): void {
 		const excluded = this.getSettings().excludedFolders;
 		for (const file of this.app.vault.getFiles()) {
-			if (excluded.some((folder) => file.path.startsWith(folder))) continue;
+			if (isPathExcluded(file.path, excluded)) continue;
 			this.consider(file, priority);
 		}
 	}

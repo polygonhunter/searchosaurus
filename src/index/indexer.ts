@@ -1,5 +1,6 @@
 import { debounce, TFile, type App, type Plugin } from "obsidian";
 import type { SearchEngine } from "../core/engine";
+import { isPathExcluded } from "../core/paths";
 import type { SearchosaurusSettings } from "../settings";
 import { extractDocs } from "./content";
 import { IndexPersistence } from "./persistence";
@@ -130,7 +131,7 @@ export class Indexer {
 	}
 
 	private isExcluded(path: string): boolean {
-		return this.getSettings().excludedFolders.some((folder) => path.startsWith(folder));
+		return isPathExcluded(path, this.getSettings().excludedFolders);
 	}
 
 	private enqueue(path: string): void {

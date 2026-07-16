@@ -57,14 +57,30 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 				aliases: ["keyboard", "shortcut"],
 			},
 			{
-				name: "Excluded folders",
-				desc: "One folder path per line. Files under these paths are not indexed.",
-				control: {
-					type: "textarea",
-					key: "excludedFolders",
-					placeholder: "templates/\narchive/",
-					rows: 3,
+				type: "list",
+				heading: "Excluded folders",
+				emptyState: "No folders excluded — the whole vault is indexed.",
+				addItem: {
+					name: "Exclude a folder",
+					action: () => {
+						this.host.settings.excludedFolders.push("");
+						this.update();
+					},
 				},
+				onDelete: (index) => {
+					this.host.settings.excludedFolders.splice(index, 1);
+					void this.persist();
+					this.update();
+				},
+				items: this.host.settings.excludedFolders.map((_, index) => ({
+					name: "",
+					searchable: false,
+					control: {
+						type: "folder",
+						key: `excludedFolder:${index}`,
+						placeholder: "Choose a folder…",
+					},
+				})),
 			},
 			{
 				name: "Result limit",
@@ -123,9 +139,10 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 
 	getControlValue(key: string): unknown {
 		const settings = this.host.settings;
+		if (key.startsWith("excludedFolder:")) {
+			return settings.excludedFolders[Number(key.slice("excludedFolder:".length))] ?? "";
+		}
 		switch (key) {
-			case "excludedFolders":
-				return settings.excludedFolders.join("\n");
 			case "ocrLanguages":
 				return settings.ocrLanguages.join("+");
 			default:
@@ -135,13 +152,15 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 
 	async setControlValue(key: string, value: unknown): Promise<void> {
 		const settings = this.host.settings;
+		if (key.startsWith("excludedFolder:")) {
+			const index = Number(key.slice("excludedFolder:".length));
+			if (index >= 0 && index < settings.excludedFolders.length) {
+				settings.excludedFolders[index] = String(value).trim();
+			}
+			await this.persist();
+			return;
+		}
 		switch (key) {
-			case "excludedFolders":
-				settings.excludedFolders = String(value)
-					.split("\n")
-					.map((line) => line.trim())
-					.filter((line) => line.length > 0);
-				break;
 			case "ocrLanguages":
 				settings.ocrLanguages = String(value).split("+");
 				break;
@@ -155,6 +174,10 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 				settings.indexPdfText = Boolean(value);
 				break;
 		}
+		await this.persist();
+	}
+
+	private async persist(): Promise<void> {
 		await this.host.saveSettings();
 		this.host.onSettingsChanged();
 	}
