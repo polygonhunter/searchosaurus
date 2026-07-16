@@ -45,18 +45,23 @@ export default class SearchosaurusPlugin extends Plugin {
 			(file, priority) => this.pipeline?.consider(file, priority),
 		);
 
+		const openSearch = () => {
+			new SearchosaurusModal(this.app, {
+				engine: this.engine,
+				settings: () => this.settings,
+				data: this.data,
+				saveDataSoon: () => this.saveDataSoon(),
+			}).open();
+		};
+
 		this.addCommand({
 			id: "open-search",
 			name: "Open search",
-			callback: () => {
-				new SearchosaurusModal(this.app, {
-					engine: this.engine,
-					settings: () => this.settings,
-					data: this.data,
-					saveDataSoon: () => this.saveDataSoon(),
-				}).open();
-			},
+			callback: openSearch,
 		});
+		// Tappable entry point — on mobile this lands in the side menu, so
+		// the search is reachable without configuring anything.
+		this.addRibbonIcon("search", "Searchosaurus: Open search", openSearch);
 
 		this.addSettingTab(new SearchosaurusSettingTab(this.app, this));
 

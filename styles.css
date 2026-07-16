@@ -339,6 +339,55 @@
 	display: none;
 }
 
+/* ---- mobile ---- */
+
+/* Phones: the prompt is effectively fullscreen — drop the floating-glass
+   framing and the (costly) blur; tablets keep the desktop look. */
+body.is-phone .searchosaurus-modal.prompt {
+	width: 100%;
+	max-height: none;
+	border-radius: var(--radius-l) var(--radius-l) 0 0;
+	background-color: var(--background-primary);
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+	border: none;
+	box-shadow: none;
+}
+
+/* The app animates its own prompt presentation — don't fight it. */
+body.is-phone .searchosaurus-modal.prompt,
+body.is-phone .searchosaurus-modal.is-entering .suggestion-item {
+	animation: none;
+}
+
+/* No room for a side-by-side preview on a phone, even in landscape. */
+body.is-phone .searchosaurus-preview {
+	display: none;
+}
+
+body.is-phone .searchosaurus-modal .prompt-results {
+	flex-basis: 100%;
+}
+
+/* Touch-friendly targets: taller rows, larger filter icons. */
+body.is-mobile .searchosaurus-result {
+	padding: var(--size-4-3) var(--size-4-3);
+}
+
+body.is-mobile .searchosaurus-filter-button {
+	padding: var(--size-4-2) var(--size-4-3);
+}
+
+body.is-mobile .searchosaurus-filter-row {
+	padding-bottom: var(--size-4-2);
+}
+
+/* Keyboard hints and held-modifier badges mean nothing on touch. */
+body.is-mobile .searchosaurus-hint,
+body.is-mobile .searchosaurus-result-index {
+	display: none;
+}
+
 /* ---- restraint ---- */
 
 @media (prefers-reduced-motion: reduce) {

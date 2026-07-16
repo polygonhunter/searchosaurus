@@ -58,6 +58,14 @@ Searchosaurus ships without a default hotkey. Bind **“Searchosaurus: Open sear
 
 To search text inside images, enable **OCR** in the plugin settings: the recognition models (~8 MB) download once from this repository's releases, then everything runs locally. Extracted text is cached and synced, so other devices never re-run the work.
 
+### On your phone
+
+Searchosaurus works on mobile too (OCR results synced from desktop included). To make it *the* search there:
+
+1. *Settings → Mobile → Configure Quick Action* → **Searchosaurus: Open search** — the swipe-down gesture now opens Searchosaurus instead of the built-in search.
+2. Optionally disable the **Search** core plugin — the default search button disappears entirely.
+3. The Searchosaurus icon in the side menu (ribbon) works out of the box, and you can add the command to the mobile toolbar as well.
+
 ## Privacy & network use
 
 Searchosaurus works entirely offline. It makes exactly **one** kind of network request, and only if you opt in: when you enable OCR in the settings, it downloads the recognition models once (a ~4 MB zip from [this repository's releases](https://github.com/polygonhunter/searchosaurus/releases/tag/ocr-assets-v1), verified against a pinned SHA-256 checksum). After that, everything — indexing, search, OCR — runs locally. No telemetry, no analytics, and nothing from your vault ever leaves your device.
