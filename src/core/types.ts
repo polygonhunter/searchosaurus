@@ -77,4 +77,8 @@ export interface SearchHit {
 	tagList: string[];
 	url?: string;
 	line?: number;
+	/** Unresolved [[wikilink]] target — choosing it creates the note. */
+	ghost?: boolean;
+	/** Synthetic "create this note" row shown when nothing matches. */
+	create?: boolean;
 }

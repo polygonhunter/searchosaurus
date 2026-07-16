@@ -272,6 +272,76 @@
 	overflow-wrap: anywhere;
 }
 
+/* ---- progressive disclosure: invisible until you reach for it ---- */
+
+/* one faint help line, empty state only */
+.searchosaurus-hint {
+	display: none;
+	padding: var(--size-4-1) var(--size-4-4) var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.searchosaurus-modal.is-empty-query .searchosaurus-hint {
+	display: block;
+}
+
+/* ⌘1–9 numbers exist always, appear only while ⌘/Ctrl is held */
+.searchosaurus-result {
+	position: relative;
+}
+
+.searchosaurus-result-index {
+	margin-left: auto;
+	flex-shrink: 0;
+	min-width: 1.4em;
+	text-align: center;
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-faint);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+	border-radius: var(--radius-s);
+	padding: 0 var(--size-2-1);
+	opacity: 0;
+	transition: opacity 100ms ease;
+}
+
+.searchosaurus-modal.mods-held .searchosaurus-result-index {
+	opacity: 1;
+}
+
+/* pinned: nothing but a tiny dot */
+.searchosaurus-pin-dot {
+	position: absolute;
+	left: 3px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background-color: var(--text-accent);
+}
+
+/* ghost notes (unresolved links) and the create row stay quiet */
+.searchosaurus-result.is-ghost,
+.searchosaurus-result.is-create {
+	color: var(--text-muted);
+}
+
+.searchosaurus-result.is-ghost .searchosaurus-result-icon,
+.searchosaurus-result.is-create .searchosaurus-result-icon {
+	color: var(--text-faint);
+}
+
+/* drill-down mode: the input hints where you are via its placeholder */
+.searchosaurus-modal.is-drilldown .searchosaurus-filter-row {
+	display: none;
+}
+
 /* ---- restraint ---- */
 
 @media (prefers-reduced-motion: reduce) {
