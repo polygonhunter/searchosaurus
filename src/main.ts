@@ -46,9 +46,10 @@ export default class SearchosaurusPlugin extends Plugin {
 		);
 
 		const openSearch = () => {
-			// Deferred a tick: command pickers and the mobile Quick Action
-			// overlay dismiss themselves right after invoking a command and
-			// would sweep a synchronously opened modal away with them.
+			// Deferred: command pickers and the mobile Quick Action overlay
+			// dismiss themselves right after invoking a command and would
+			// sweep a synchronously opened modal away with them. Mobile
+			// overlays animate, so give them a real head start there.
 			window.setTimeout(() => {
 				try {
 					new SearchosaurusModal(this.app, {
@@ -63,7 +64,7 @@ export default class SearchosaurusPlugin extends Plugin {
 						`Searchosaurus: failed to open search — ${error instanceof Error ? error.message : String(error)}`,
 					);
 				}
-			}, 0);
+			}, Platform.isMobile ? 150 : 0);
 		};
 
 		this.addCommand({

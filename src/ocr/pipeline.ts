@@ -7,7 +7,9 @@ import type { SearchosaurusSettings } from "../settings";
 import { attachmentDoc } from "../index/content";
 import { assetsPresent } from "./assets";
 import { OcrCache } from "./ocr-cache";
-import { OcrService } from "./ocr-service";
+// Type-only: tesseract.js must not be evaluated at plugin load — it is
+// desktop-only and was a mobile load-failure suspect. Loaded lazily below.
+import type { OcrService } from "./ocr-service";
 
 /** Hard cap per file — extracted text is a low-weight helper field. */
 const MAX_EXTRACTED_CHARS = 20_000;
@@ -22,7 +24,7 @@ const MAX_PDF_PAGES = 100;
 export class OcrPipeline {
 	private readonly queue = new OcrQueue(idleScheduler(window));
 	private readonly cache: OcrCache;
-	private readonly service: OcrService;
+	private service: OcrService | null = null;
 	private missingAssetsWarned = false;
 
 	constructor(
@@ -33,7 +35,15 @@ export class OcrPipeline {
 		private readonly persistSoon: () => void,
 	) {
 		this.cache = new OcrCache(app, manifestDir);
-		this.service = new OcrService(app, manifestDir);
+	}
+
+	/** Instantiate tesseract on first use only (desktop recognition path). */
+	private async getService(): Promise<OcrService> {
+		if (!this.service) {
+			const { OcrService: Service } = await import("./ocr-service");
+			this.service = new Service(this.app, this.manifestDir);
+		}
+		return this.service;
 	}
 
 	async init(plugin: Plugin): Promise<void> {
@@ -54,7 +64,8 @@ export class OcrPipeline {
 
 	async destroy(): Promise<void> {
 		this.queue.clear();
-		await this.service.terminate();
+		await this.service?.terminate();
+		this.service = null;
 		await this.cache.save();
 	}
 
@@ -92,7 +103,8 @@ export class OcrPipeline {
 			async () => {
 				if (!(await this.assetsReady())) return;
 				const url = this.app.vault.getResourcePath(file);
-				const text = await this.service.recognize(url, langs);
+				const service = await this.getService();
+				const text = await service.recognize(url, langs);
 				this.cache.set(file.path, {
 					mtime: file.stat.mtime,
 					size: file.stat.size,
