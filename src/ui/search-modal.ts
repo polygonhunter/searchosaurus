@@ -9,18 +9,27 @@ import type { SearchHit } from "../core/types";
 import type { SearchosaurusSettings } from "../settings";
 import { FilterRow, type FilterState } from "./filter-row";
 import { iconForKind } from "./icons";
+import { PreviewPane } from "./preview";
 
 /** How many candidates the phrase filter may lazily read from disk. */
 const PHRASE_CANDIDATE_LIMIT = 200;
+/** How long the entrance stagger class stays on (first paint only). */
+const ENTER_DURATION_MS = 450;
 
 /**
  * The Searchosaurus prompt. Deliberately minimal chrome: input, a quiet
- * filter row, results — nothing else. Every power feature stays behind the
- * keyboard (progressive disclosure is the plugin's core design rule).
+ * filter row, results, live preview — nothing else. Every power feature
+ * stays behind the keyboard (progressive disclosure is the plugin's core
+ * design rule).
  */
 export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	private readonly filterState: FilterState = { kind: null, sort: "relevance" };
 	private filterRow: FilterRow;
+	private preview: PreviewPane;
+	private selectionObserver: MutationObserver;
+	/** Hits currently rendered, in DOM order — maps selection → preview. */
+	private currentHits: SearchHit[] = [];
+	private currentWords: string[] = [];
 
 	constructor(
 		app: App,
@@ -33,10 +42,37 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		this.emptyStateText = "No matches.";
 		this.limit = getSettings().resultLimit;
 
-		// Custom chrome between the (public) input container and result list.
+		// Custom chrome around the (public) input and result containers:
+		// input · filter row · [ results | preview ].
 		const row = createDiv();
 		this.modalEl.insertBefore(row, this.resultContainerEl);
 		this.filterRow = new FilterRow(row, this.filterState, () => this.refresh());
+
+		const body = createDiv({ cls: "searchosaurus-body" });
+		this.modalEl.insertBefore(body, this.resultContainerEl);
+		body.appendChild(this.resultContainerEl);
+		this.preview = new PreviewPane(app, body.createDiv());
+
+		// SuggestModal exposes no selection hook; the selected row is marked
+		// with .is-selected, so observe class flips on the result container.
+		this.selectionObserver = new MutationObserver(() => this.syncPreview());
+		this.selectionObserver.observe(this.resultContainerEl, {
+			subtree: true,
+			attributeFilter: ["class"],
+		});
+	}
+
+	onOpen(): void {
+		super.onOpen();
+		// Stagger the very first result paint only — never on keystrokes.
+		this.modalEl.addClass("is-entering");
+		window.setTimeout(() => this.modalEl.removeClass("is-entering"), ENTER_DURATION_MS);
+	}
+
+	onClose(): void {
+		this.selectionObserver.disconnect();
+		this.preview.destroy();
+		super.onClose();
 	}
 
 	/** Re-run getSuggestions via the public input path (no private APIs). */
@@ -44,11 +80,29 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		this.inputEl.dispatchEvent(new Event("input"));
 	}
 
+	private syncPreview(): void {
+		const items = this.resultContainerEl.querySelectorAll(".suggestion-item");
+		let selected = -1;
+		items.forEach((item, index) => {
+			if (item.hasClass("is-selected")) selected = index;
+		});
+		const hit = selected >= 0 ? this.currentHits[selected] : undefined;
+		if (hit) {
+			void this.preview.show(hit, this.currentWords);
+		} else {
+			this.preview.clear();
+		}
+	}
+
 	async getSuggestions(query: string): Promise<SearchHit[]> {
 		const parsed = parseQuery(query);
 		this.filterRow.reflectKind(parsed.kind);
 
-		if (parsed.text.length === 0 && parsed.tags.length === 0) return [];
+		if (parsed.text.length === 0 && parsed.tags.length === 0) {
+			this.currentHits = [];
+			this.preview.clear();
+			return [];
+		}
 
 		// Typed operators search title-focused; otherwise all fields.
 		const options = parsed.kind !== null ? { fields: [...TITLE_FIELDS] } : undefined;
@@ -61,7 +115,11 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		if (parsed.phrases.length > 0) {
 			ranked = await this.filterByPhrases(ranked, parsed.phrases);
 		}
-		return ranked.slice(0, this.getSettings().resultLimit);
+		const limited = ranked.slice(0, this.getSettings().resultLimit);
+		this.currentHits = limited;
+		this.currentWords = foldedWords(parsed.text);
+		if (limited.length === 0) this.preview.clear();
+		return limited;
 	}
 
 	private applyFilters(hits: SearchHit[], parsed: ParsedQuery): SearchHit[] {
@@ -115,12 +173,10 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 	/** Bodies are not stored in the index — read lazily per rendered row. */
 	private async renderNoteSnippet(hit: SearchHit, el: HTMLElement): Promise<void> {
-		const query = parseQuery(this.inputEl.value);
-		const words = foldedWords(query.text);
-		if (words.length === 0) return;
+		if (this.currentWords.length === 0) return;
 		const file = this.app.vault.getFileByPath(hit.path);
 		if (!file) return;
-		const snippet = buildSnippet(await this.app.vault.cachedRead(file), words);
+		const snippet = buildSnippet(await this.app.vault.cachedRead(file), this.currentWords);
 		if (snippet.text.length === 0 || snippet.ranges.length === 0) return;
 		el.empty();
 		el.addClass("searchosaurus-result-snippet");
@@ -139,19 +195,43 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 				window.open(hit.url);
 				return;
 			}
-			void this.openAtLine(hit);
+			void this.openFileAt(hit, false, hit.line);
+			return;
+		}
+		if (hit.kind === "note") {
+			void this.openNoteAtMatch(hit, Keymap.isModEvent(evt));
 			return;
 		}
 		void this.app.workspace.openLinkText(hit.path, "", Keymap.isModEvent(evt));
 	}
 
-	/** Open the note containing the link, scrolled to the link's line. */
-	private async openAtLine(hit: SearchHit): Promise<void> {
+	/**
+	 * Open a note scrolled to the first match — Obsidian flashes the target
+	 * line when eState.line is set, which is exactly the "where did I land"
+	 * moment we want.
+	 */
+	private async openNoteAtMatch(hit: SearchHit, paneType: boolean | string): Promise<void> {
+		let line: number | undefined;
+		if (this.currentWords.length > 0) {
+			const file = this.app.vault.getFileByPath(hit.path);
+			if (file) {
+				const body = await this.app.vault.cachedRead(file);
+				line = firstMatchLine(body, this.currentWords);
+			}
+		}
+		await this.openFileAt(hit, paneType, line);
+	}
+
+	private async openFileAt(
+		hit: SearchHit,
+		paneType: boolean | string,
+		line: number | undefined,
+	): Promise<void> {
 		const file = this.app.vault.getFileByPath(hit.path);
-		if (!(file as TFile | null)) return;
-		const leaf = this.app.workspace.getLeaf(false);
+		if (!file) return;
+		const leaf = this.app.workspace.getLeaf(paneType as boolean);
 		await leaf.openFile(file as TFile, {
-			eState: hit.line !== undefined ? { line: hit.line } : undefined,
+			eState: line !== undefined ? { line } : undefined,
 		});
 	}
 }
@@ -159,4 +239,20 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 function parentFolder(path: string): string {
 	const idx = path.lastIndexOf("/");
 	return idx === -1 ? "" : path.slice(0, idx);
+}
+
+/** 0-based line of the first case-insensitive occurrence of any word. */
+function firstMatchLine(body: string, words: readonly string[]): number | undefined {
+	const lower = body.toLowerCase();
+	let first = -1;
+	for (const word of words) {
+		const index = lower.indexOf(word.toLowerCase());
+		if (index !== -1 && (first === -1 || index < first)) first = index;
+	}
+	if (first === -1) return undefined;
+	let line = 0;
+	for (let i = 0; i < first; i++) {
+		if (body.charCodeAt(i) === 10) line += 1;
+	}
+	return line;
 }

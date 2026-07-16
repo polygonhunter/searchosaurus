@@ -1,20 +1,87 @@
-/* Searchosaurus — minimal result chrome. The Spotlight look (glass, motion)
-   lands in its own milestone; keep it visually native until then. */
+/* ============================================================ *
+ * Searchosaurus — Spotlight-style panel.
+ * Radically clean: glass, type, results. All color derives from
+ * theme variables so dark/light and custom themes stay coherent.
+ * ============================================================ */
+
+/* ---- the floating glass panel ---- */
+
+.modal-container:has(> .searchosaurus-modal) {
+	--searchosaurus-glass: color-mix(in srgb, var(--background-primary) 74%, transparent);
+}
+
+.searchosaurus-modal.prompt {
+	width: min(780px, 92vw);
+	max-height: min(64vh, 620px);
+	border-radius: 22px;
+	background-color: var(--searchosaurus-glass, var(--background-primary));
+	-webkit-backdrop-filter: blur(30px) saturate(1.7);
+	backdrop-filter: blur(30px) saturate(1.7);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+	box-shadow:
+		0 24px 70px rgb(0 0 0 / 0.38),
+		0 2px 12px rgb(0 0 0 / 0.18),
+		inset 0 1px 0 rgb(255 255 255 / 0.09);
+	overflow: hidden;
+	animation: searchosaurus-enter 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes searchosaurus-enter {
+	from {
+		opacity: 0;
+		transform: scale(0.96) translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+}
+
+.searchosaurus-modal .prompt-input-container {
+	background: transparent;
+}
+
+.searchosaurus-modal .prompt-input {
+	font-size: var(--font-ui-large);
+	background: transparent;
+	padding: var(--size-4-4) var(--size-4-4);
+}
+
+/* ---- filter row: quiet icons + sliding pill ---- */
 
 .searchosaurus-filter-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: var(--size-4-1) var(--size-4-3);
-	border-bottom: var(--border-width) solid var(--background-modifier-border);
+	padding: 0 var(--size-4-3) var(--size-4-1);
+	border-bottom: var(--border-width) solid
+		color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
 }
 
 .searchosaurus-filter-kinds {
+	position: relative;
 	display: flex;
 	gap: var(--size-4-1);
 }
 
+.searchosaurus-filter-pill {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 100%;
+	width: 0;
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-hover);
+	opacity: 0;
+	transition:
+		transform 180ms cubic-bezier(0.3, 1, 0.4, 1),
+		width 180ms cubic-bezier(0.3, 1, 0.4, 1),
+		opacity 120ms ease;
+	pointer-events: none;
+}
+
 .searchosaurus-filter-button {
+	position: relative;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -25,27 +92,70 @@
 	border-radius: var(--radius-s);
 	color: var(--text-faint);
 	cursor: var(--cursor);
+	transition: color 120ms ease;
 }
 
 .searchosaurus-filter-button:hover {
 	color: var(--text-muted);
-	background-color: var(--background-modifier-hover);
+	background: none;
 }
 
 .searchosaurus-filter-button.is-active {
 	color: var(--text-normal);
-	background-color: var(--background-modifier-hover);
 }
 
-.searchosaurus-result-snippet mark {
-	background-color: var(--text-highlight-bg);
-	color: inherit;
+.searchosaurus-sort-button.is-active {
+	color: var(--text-accent);
 }
+
+/* ---- results | preview split ---- */
+
+.searchosaurus-body {
+	display: flex;
+	min-height: 0;
+	flex: 1 1 auto;
+}
+
+.searchosaurus-modal .prompt-results {
+	flex: 1 1 55%;
+	min-width: 0;
+	padding: var(--size-4-2);
+}
+
+.searchosaurus-preview {
+	flex: 1 1 45%;
+	min-width: 0;
+	overflow-y: auto;
+	border-left: var(--border-width) solid
+		color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+	padding: var(--size-4-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.searchosaurus-preview.is-empty {
+	display: none;
+}
+
+.searchosaurus-modal:has(.searchosaurus-preview.is-empty) .prompt-results {
+	flex-basis: 100%;
+}
+
+@media (max-width: 700px) {
+	.searchosaurus-preview {
+		display: none;
+	}
+}
+
+/* ---- result rows ---- */
 
 .searchosaurus-result {
 	display: flex;
 	align-items: center;
 	gap: var(--size-4-3);
+	border-radius: var(--radius-m);
+	padding: var(--size-4-2) var(--size-4-3);
 }
 
 .searchosaurus-result-icon {
@@ -71,4 +181,104 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.searchosaurus-result-snippet mark,
+.searchosaurus-mark {
+	background-color: var(--text-highlight-bg);
+	color: inherit;
+	border-radius: 2px;
+}
+
+/* first paint after opening: results drift in, one after another */
+.searchosaurus-modal.is-entering .suggestion-item {
+	animation: searchosaurus-item 170ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.searchosaurus-modal.is-entering .suggestion-item:nth-child(1) { animation-delay: 15ms; }
+.searchosaurus-modal.is-entering .suggestion-item:nth-child(2) { animation-delay: 33ms; }
+.searchosaurus-modal.is-entering .suggestion-item:nth-child(3) { animation-delay: 51ms; }
+.searchosaurus-modal.is-entering .suggestion-item:nth-child(4) { animation-delay: 69ms; }
+.searchosaurus-modal.is-entering .suggestion-item:nth-child(5) { animation-delay: 87ms; }
+.searchosaurus-modal.is-entering .suggestion-item:nth-child(6) { animation-delay: 105ms; }
+.searchosaurus-modal.is-entering .suggestion-item:nth-child(7) { animation-delay: 123ms; }
+.searchosaurus-modal.is-entering .suggestion-item:nth-child(n + 8) { animation-delay: 140ms; }
+
+@keyframes searchosaurus-item {
+	from {
+		opacity: 0;
+		transform: translateY(5px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+/* ---- preview content ---- */
+
+.searchosaurus-preview-note {
+	font-size: var(--font-ui-small);
+	overflow-wrap: anywhere;
+}
+
+.searchosaurus-preview-note :is(h1, h2, h3, h4) {
+	font-size: 1.05em;
+	margin: 0.6em 0 0.3em;
+}
+
+.searchosaurus-preview-image img {
+	max-width: 100%;
+	border-radius: var(--radius-m);
+}
+
+.searchosaurus-preview-file,
+.searchosaurus-preview-link {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--size-4-2);
+}
+
+.searchosaurus-preview-file-icon {
+	color: var(--text-muted);
+	--icon-size: 28px;
+}
+
+.searchosaurus-preview-file-name {
+	font-weight: var(--font-medium);
+	overflow-wrap: anywhere;
+}
+
+.searchosaurus-preview-file-meta,
+.searchosaurus-preview-link-url {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	overflow-wrap: anywhere;
+}
+
+.searchosaurus-preview-link-context {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	border-left: 2px solid var(--background-modifier-border);
+	padding-left: var(--size-4-2);
+}
+
+.searchosaurus-preview-path {
+	margin-top: auto;
+	padding-top: var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	overflow-wrap: anywhere;
+}
+
+/* ---- restraint ---- */
+
+@media (prefers-reduced-motion: reduce) {
+	.searchosaurus-modal.prompt,
+	.searchosaurus-modal.is-entering .suggestion-item,
+	.searchosaurus-filter-pill {
+		animation: none;
+		transition: none;
+	}
 }

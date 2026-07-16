@@ -24,6 +24,8 @@ const KINDS: ReadonlyArray<{ kind: ResultKind; label: string }> = [
 export class FilterRow {
 	private readonly buttons = new Map<ResultKind, HTMLElement>();
 	private sortButton: HTMLElement;
+	/** Sliding indicator behind the active kind icon (segmented-control). */
+	private readonly pill: HTMLElement;
 	/** Kind forced by a typed operator: icons mirror it but stay passive. */
 	private operatorKind: ResultKind | null = null;
 
@@ -35,6 +37,7 @@ export class FilterRow {
 		containerEl.addClass("searchosaurus-filter-row");
 
 		const kindsEl = containerEl.createDiv({ cls: "searchosaurus-filter-kinds" });
+		this.pill = kindsEl.createDiv({ cls: "searchosaurus-filter-pill" });
 		for (const { kind, label } of KINDS) {
 			const button = kindsEl.createEl("button", { cls: "searchosaurus-filter-button" });
 			setIcon(button, iconForKind(kind));
@@ -78,5 +81,19 @@ export class FilterRow {
 			"aria-pressed",
 			this.state.sort === "modified" ? "true" : "false",
 		);
+		this.movePill(active !== null ? (this.buttons.get(active) ?? null) : null);
+	}
+
+	/** Slide the pill under the active button (after layout has settled). */
+	private movePill(target: HTMLElement | null): void {
+		requestAnimationFrame(() => {
+			if (!target) {
+				this.pill.style.opacity = "0";
+				return;
+			}
+			this.pill.style.opacity = "1";
+			this.pill.style.transform = `translateX(${target.offsetLeft}px)`;
+			this.pill.style.width = `${target.offsetWidth}px`;
+		});
 	}
 }
