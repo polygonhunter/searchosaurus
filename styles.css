@@ -1,5 +1,46 @@
 /* Searchosaurus — minimal result chrome. The Spotlight look (glass, motion)
-   lands in its own milestone; keep M1 visually native. */
+   lands in its own milestone; keep it visually native until then. */
+
+.searchosaurus-filter-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--size-4-1) var(--size-4-3);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
+
+.searchosaurus-filter-kinds {
+	display: flex;
+	gap: var(--size-4-1);
+}
+
+.searchosaurus-filter-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--size-4-1) var(--size-4-2);
+	background: none;
+	border: none;
+	box-shadow: none;
+	border-radius: var(--radius-s);
+	color: var(--text-faint);
+	cursor: var(--cursor);
+}
+
+.searchosaurus-filter-button:hover {
+	color: var(--text-muted);
+	background-color: var(--background-modifier-hover);
+}
+
+.searchosaurus-filter-button.is-active {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+.searchosaurus-result-snippet mark {
+	background-color: var(--text-highlight-bg);
+	color: inherit;
+}
 
 .searchosaurus-result {
 	display: flex;

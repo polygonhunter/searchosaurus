@@ -1,15 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <!-- Searchosaurus — a dino peeking through a magnifying glass.
-       Same minimal geometric family style as Linkosaurus / Scalosaurus. -->
-  <g fill="none" stroke="#3aa675" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
-    <!-- magnifier -->
-    <circle cx="54" cy="54" r="34"/>
-    <line x1="79" y1="79" x2="106" y2="106"/>
-    <!-- dino silhouette inside the lens -->
-    <path d="M36 66 q4 -18 18 -18 q10 0 12 8 q2 7 8 7" stroke-width="6"/>
-    <!-- eye -->
-    <circle cx="52" cy="52" r="1.5" fill="#3aa675" stroke="none"/>
-    <!-- back spikes -->
-    <path d="M42 52 l4 -6 l4 6" stroke-width="4"/>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Searchosaurus">
+  <defs>
+    <linearGradient id="se-tile" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5b8cff"/>
+      <stop offset="1" stop-color="#2f5ed9"/>
+    </linearGradient>
+    <linearGradient id="se-sheen" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="se-glass" cx="0.35" cy="0.3" r="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.05"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="118" fill="url(#se-tile)"/>
+  <rect x="16" y="16" width="480" height="480" rx="118" fill="url(#se-sheen)"/>
+
+  <ellipse cx="240" cy="402" rx="140" ry="18" fill="#000000" opacity="0.13"/>
+
+  <!-- minimal geometric raptor (white) -->
+  <g fill="#ffffff">
+    <!-- tail -->
+    <path d="M146 326 L84 302 L110 344 Z"/>
+    <!-- body capsule -->
+    <rect x="130" y="290" width="200" height="84" rx="42"/>
+    <!-- neck -->
+    <rect x="296" y="252" width="62" height="86" rx="31"/>
+    <!-- legs -->
+    <rect x="170" y="358" width="38" height="56" rx="19"/>
+    <rect x="262" y="358" width="38" height="56" rx="19"/>
+    <!-- back bumps -->
+    <circle cx="196" cy="286" r="12"/>
+    <circle cx="238" cy="280" r="12"/>
+    <circle cx="280" cy="286" r="12"/>
+  </g>
+
+  <!-- head under the lens -->
+  <g fill="#ffffff">
+    <circle cx="352" cy="242" r="36"/>
+    <!-- snout -->
+    <rect x="348" y="232" width="56" height="28" rx="14"/>
+  </g>
+
+  <!-- magnifier: glass over the head, the eye appears BIG through it -->
+  <circle cx="366" cy="234" r="82" fill="url(#se-glass)"/>
+  <!-- magnified eye -->
+  <circle cx="362" cy="230" r="15" fill="#2f5ed9"/>
+  <circle cx="367" cy="225" r="4.5" fill="#ffffff"/>
+  <!-- lens sheen -->
+  <path d="M312 196 a70 70 0 0 1 44 -30" stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity="0.55" fill="none"/>
+  <!-- ring + handle (coral) -->
+  <circle cx="366" cy="234" r="82" stroke="#ff8a5c" stroke-width="20" fill="none"/>
+  <path d="M424 292 L462 330" stroke="#ff8a5c" stroke-width="32" stroke-linecap="round"/>
+
+  <!-- footprint the raptor is tracking (coral) -->
+  <g fill="#ff8a5c" opacity="0.9">
+    <ellipse cx="118" cy="394" rx="14" ry="9"/>
+    <circle cx="104" cy="384" r="5"/>
+    <circle cx="118" cy="380" r="5"/>
+    <circle cx="132" cy="384" r="5"/>
   </g>
 </svg>

@@ -16,7 +16,7 @@
 		"search",
 		"ocr"
 	],
-	"author": "Maximilian Rarbach",
+	"author": "polygonhunter",
 	"license": "MIT",
 	"devDependencies": {
 		"@types/node": "^22",

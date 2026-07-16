@@ -15,6 +15,7 @@ function doc(overrides: Partial<IndexedDoc> & { id: string }): IndexedDoc {
 		path: overrides.id,
 		mtime: 0,
 		aliasList: [],
+		tagList: [],
 		...overrides,
 	};
 }
@@ -33,16 +34,16 @@ describe("SearchEngine", () => {
 
 	it("boosts basename matches above body mentions", () => {
 		const engine = makeEngine();
-		engine.upsert(doc({ id: "People/Ocean Menon.md", basename: "Ocean Menon" }));
+		engine.upsert(doc({ id: "People/Mira Holt.md", basename: "Mira Holt" }));
 		engine.upsert(
 			doc({
 				id: "log.md",
 				basename: "log",
-				body: "Talked to Ocean Menon about Ocean Menon's plans. Ocean Menon agreed.",
+				body: "Talked to Mira Holt about Mira Holt's plans. Mira Holt agreed.",
 			}),
 		);
-		const hits = engine.search("Ocean Menon");
-		expect(hits[0]?.id).toBe("People/Ocean Menon.md");
+		const hits = engine.search("Mira Holt");
+		expect(hits[0]?.id).toBe("People/Mira Holt.md");
 	});
 
 	it("matches umlaut queries against folded titles and vice versa", () => {
@@ -57,12 +58,12 @@ describe("SearchEngine", () => {
 		engine.upsert(
 			doc({
 				id: "p.md",
-				basename: "Ocean Menon",
-				aliases: "Oce",
-				aliasList: ["Oce"],
+				basename: "Mira Holt",
+				aliases: "Miri",
+				aliasList: ["Miri"],
 			}),
 		);
-		expect(engine.search("Oce")[0]?.id).toBe("p.md");
+		expect(engine.search("Miri")[0]?.id).toBe("p.md");
 	});
 
 	it("upserts without duplicating and removes cleanly", () => {
@@ -92,17 +93,17 @@ describe("SearchEngine", () => {
 
 	it("round-trips through toJSON/load", () => {
 		const engine = makeEngine();
-		engine.upsert(doc({ id: "a.md", basename: "Ocean Menon" }));
+		engine.upsert(doc({ id: "a.md", basename: "Mira Holt" }));
 		engine.upsert(doc({ id: "b.md", basename: "b", body: "unrelated text" }));
 		const json = engine.toJSON();
 
 		const restored = makeEngine();
 		restored.load(json);
 		expect(restored.size).toBe(2);
-		expect(restored.search("ocean")[0]?.id).toBe("a.md");
+		expect(restored.search("mira")[0]?.id).toBe("a.md");
 		// the restored index must stay writable
-		restored.upsert(doc({ id: "c.md", basename: "Ocean Cruise" }));
-		expect(restored.search("ocean")).toHaveLength(2);
+		restored.upsert(doc({ id: "c.md", basename: "Mira Bay" }));
+		expect(restored.search("mira")).toHaveLength(2);
 	});
 
 	it("returns [] for empty queries", () => {

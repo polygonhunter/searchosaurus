@@ -3,7 +3,7 @@ import { fold, foldedWords, processTerm } from "../src/core/normalize";
 
 describe("fold", () => {
 	it("lowercases and trims", () => {
-		expect(fold("  Ocean Menon  ")).toBe("ocean menon");
+		expect(fold("  Mira Holt  ")).toBe("mira holt");
 	});
 
 	it("folds German umlauts and ß", () => {
@@ -38,7 +38,7 @@ describe("processTerm", () => {
 
 describe("foldedWords", () => {
 	it("splits folded text into words", () => {
-		expect(foldedWords("Ocean  Menon")).toEqual(["ocean", "menon"]);
+		expect(foldedWords("Mira  Holt")).toEqual(["mira", "holt"]);
 	});
 
 	it("returns [] for empty/punctuation-only input", () => {

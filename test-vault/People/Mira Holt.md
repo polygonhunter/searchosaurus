@@ -1,13 +1,13 @@
 ---
 aliases:
-  - Oce
-  - O. Menon
+  - Miri
+  - M. Holt
 ---
 
-# Ocean Menon
+# Mira Holt
 
-Product designer at Tidepool. Met at the 2025 design conference in Hamburg.
+Product designer at Driftwood Labs (fictional). Met at a design conference.
 
 - Birthday: March 12
 - Favorite topic: [[Design Systems]]
-- Website: https://example.com/ocean
+- Website: https://example.com/mira

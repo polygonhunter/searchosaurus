@@ -1,4 +1,4 @@
-# Ocean Cleanup Donation
+# River Cleanup Donation
 
-Company matching for the ocean cleanup initiative. The ocean plastic problem
-keeps growing; the ocean fund accepts monthly donations.
+Company matching for the river cleanup initiative (fictional). The plastic
+problem keeps growing; the river fund accepts monthly donations.

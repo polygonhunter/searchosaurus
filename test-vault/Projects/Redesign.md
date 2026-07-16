@@ -6,7 +6,7 @@ tags:
 
 # Redesign
 
-Working doc for the app redesign with [[Ocean Menon]].
+Working doc for the app redesign with [[Mira Holt]].
 
 ## Open questions
 
@@ -15,4 +15,4 @@ Working doc for the app redesign with [[Ocean Menon]].
 
 ## Decisions
 
-Ocean Menon signs off on typography. Ocean Menon prefers Inter.
+Mira Holt signs off on typography. Mira Holt prefers Inter.

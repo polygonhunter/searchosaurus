@@ -1,9 +1,9 @@
-import MiniSearch, { type Options, type SearchOptions } from "minisearch";
+import MiniSearch, { type Options, type Query, type SearchOptions } from "minisearch";
 import { processTerm } from "./normalize";
 import type { FieldWeights, IndexedDoc, SearchHit } from "./types";
 
 /** Bump when the doc schema or normalization changes → forces a rebuild. */
-export const INDEX_SCHEMA_VERSION = 1;
+export const INDEX_SCHEMA_VERSION = 2;
 
 const INDEX_FIELDS = [
 	"basename",
@@ -15,7 +15,16 @@ const INDEX_FIELDS = [
 	"url",
 ] as const;
 
-const STORE_FIELDS = ["path", "kind", "mtime", "basename", "aliasList", "url", "line"] as const;
+const STORE_FIELDS = [
+	"path",
+	"kind",
+	"mtime",
+	"basename",
+	"aliasList",
+	"tagList",
+	"url",
+	"line",
+] as const;
 
 /** Title-focused subset used by the n/f/i/l prefix operators. */
 export const TITLE_FIELDS: readonly string[] = ["basename", "aliases", "url"];
@@ -72,6 +81,20 @@ export class SearchEngine {
 	search(query: string, options?: SearchOptions): SearchHit[] {
 		if (query.trim().length === 0) return [];
 		return this.mini.search(query, options) as unknown as SearchHit[];
+	}
+
+	/**
+	 * Search with exclusions: hits matching any `excludes` term are dropped
+	 * via MiniSearch's AND_NOT combinator (its only NOT form).
+	 */
+	searchWithExcludes(query: string, excludes: readonly string[], options?: SearchOptions): SearchHit[] {
+		if (query.trim().length === 0) return [];
+		if (excludes.length === 0) return this.search(query, options);
+		const combined: Query = {
+			combineWith: "AND_NOT",
+			queries: [query, { combineWith: "OR", queries: [...excludes] }],
+		};
+		return this.mini.search(combined, options) as unknown as SearchHit[];
 	}
 
 	toJSON(): string {

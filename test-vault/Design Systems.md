@@ -1,6 +1,6 @@
 # Design Systems
 
-Reference note. [[Ocean Menon]] recommended https://designsystems.example.com
+Reference note. [[Mira Holt]] recommended https://designsystems.example.com
 as a starting point.
 
 ## Tokens

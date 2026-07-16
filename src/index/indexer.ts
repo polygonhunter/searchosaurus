@@ -17,6 +17,8 @@ export class Indexer {
 	private readonly persistence: IndexPersistence;
 	/** path → mtime of everything currently in the index. */
 	private readonly indexedFiles = new Map<string, number>();
+	/** notePath → ids of its link docs (discarded when the note changes). */
+	private readonly linkDocs = new Map<string, string[]>();
 	private readonly queue: string[] = [];
 	private readonly queued = new Set<string>();
 	private processing = false;
@@ -47,9 +49,13 @@ export class Indexer {
 				for (const [path, mtime] of Object.entries(persisted.files)) {
 					this.indexedFiles.set(path, mtime);
 				}
+				for (const [path, ids] of Object.entries(persisted.links)) {
+					this.linkDocs.set(path, ids);
+				}
 			} catch {
 				this.engine.clear();
 				this.indexedFiles.clear();
+				this.linkDocs.clear();
 			}
 		}
 		this.registerEvents(plugin);
@@ -67,6 +73,7 @@ export class Indexer {
 		this.queued.clear();
 		this.engine.clear();
 		this.indexedFiles.clear();
+		this.linkDocs.clear();
 		await this.persistence.clear();
 		this.diffVault();
 	}
@@ -131,6 +138,8 @@ export class Indexer {
 
 	private forget(path: string): void {
 		this.engine.remove(path);
+		for (const id of this.linkDocs.get(path) ?? []) this.engine.remove(id);
+		this.linkDocs.delete(path);
 		this.indexedFiles.delete(path);
 		this.queued.delete(path);
 		this.saveSoon();
@@ -161,9 +170,18 @@ export class Indexer {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
 		try {
-			for (const doc of await extractDocs(this.app, file)) {
+			const docs = await extractDocs(this.app, file);
+			const newLinkIds = new Set(
+				docs.filter((doc) => doc.kind === "link").map((doc) => doc.id),
+			);
+			// Drop link docs of URLs that no longer exist in the note.
+			for (const id of this.linkDocs.get(file.path) ?? []) {
+				if (!newLinkIds.has(id)) this.engine.remove(id);
+			}
+			for (const doc of docs) {
 				this.engine.upsert(doc);
 			}
+			this.linkDocs.set(file.path, [...newLinkIds]);
 			this.indexedFiles.set(file.path, file.stat.mtime);
 		} catch (error) {
 			console.error(`Searchosaurus: failed to index ${path}`, error);
@@ -177,6 +195,7 @@ export class Indexer {
 				this.weights,
 				this.engine.toJSON(),
 				Object.fromEntries(this.indexedFiles),
+				Object.fromEntries(this.linkDocs),
 			);
 		},
 		10_000,

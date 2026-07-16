@@ -59,6 +59,8 @@ export interface IndexedDoc {
 	mtime: number;
 	/** Alias list kept verbatim for exact/prefix tier checks in rank.ts. */
 	aliasList: string[];
+	/** Tag list kept verbatim (no '#') for post-search #tag filtering. */
+	tagList: string[];
 	/** Line number of the link inside its note (link docs only). */
 	line?: number;
 }
@@ -72,6 +74,7 @@ export interface SearchHit {
 	basename: string;
 	mtime: number;
 	aliasList: string[];
+	tagList: string[];
 	url?: string;
 	line?: number;
 }

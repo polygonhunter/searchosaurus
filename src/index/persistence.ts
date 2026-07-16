@@ -9,6 +9,8 @@ export interface PersistedIndex {
 	indexJson: string;
 	/** path → mtime at index time; used to diff against the live vault. */
 	files: Record<string, number>;
+	/** notePath → ids of its link docs; needed to discard them on change. */
+	links: Record<string, string[]>;
 }
 
 const KEY = "index";
@@ -45,13 +47,19 @@ export class IndexPersistence {
 		}
 	}
 
-	async save(weights: FieldWeights, indexJson: string, files: Record<string, number>): Promise<void> {
+	async save(
+		weights: FieldWeights,
+		indexJson: string,
+		files: Record<string, number>,
+		links: Record<string, string[]>,
+	): Promise<void> {
 		try {
 			await this.store.setItem<PersistedIndex>(KEY, {
 				schemaVersion: INDEX_SCHEMA_VERSION,
 				weightsHash: weightsHash(weights),
 				indexJson,
 				files,
+				links,
 			});
 		} catch {
 			// quota/private-mode failures only cost the next startup's speed
