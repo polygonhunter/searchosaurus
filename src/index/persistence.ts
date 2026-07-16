@@ -22,7 +22,8 @@ export function weightsHash(weights: FieldWeights): string {
 function asPromise<T>(request: IDBRequest<T>): Promise<T> {
 	return new Promise((resolve, reject) => {
 		request.onsuccess = () => resolve(request.result);
-		request.onerror = () => reject(request.error);
+		request.onerror = () =>
+			reject(request.error ?? new Error("Searchosaurus: IndexedDB request failed"));
 	});
 }
 
