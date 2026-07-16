@@ -1,10 +1,11 @@
 import {
+	AbstractInputSuggest,
 	Platform,
 	PluginSettingTab,
-	requireApiVersion,
 	Setting,
+	type App,
 	type Plugin,
-	type SettingDefinitionItem,
+	type TFolder,
 } from "obsidian";
 
 export interface SearchosaurusSettings {
@@ -38,145 +39,46 @@ export interface SettingsHost extends Plugin {
 	rebuildIndex(): Promise<void>;
 }
 
+/** Vault-folder autocomplete for a plain text/search input. */
+class FolderSuggest extends AbstractInputSuggest<TFolder> {
+	constructor(
+		app: App,
+		private readonly textInputEl: HTMLInputElement,
+	) {
+		super(app, textInputEl);
+	}
+
+	protected getSuggestions(query: string): TFolder[] {
+		const needle = query.toLowerCase();
+		return this.app.vault
+			.getAllFolders(false)
+			.filter((folder) => folder.path.toLowerCase().includes(needle))
+			.slice(0, 20);
+	}
+
+	renderSuggestion(folder: TFolder, el: HTMLElement): void {
+		el.setText(folder.path);
+	}
+
+	selectSuggestion(folder: TFolder): void {
+		this.setValue(folder.path);
+		// Notify the owning component's onChange (it listens for input).
+		this.textInputEl.dispatchEvent(new Event("input"));
+		this.close();
+	}
+}
+
 /**
- * Declarative settings (Obsidian ≥ 1.13): definitions render through the
- * platform and show up in the settings search. Array-typed settings are
- * mapped to/from their control strings in get/setControlValue.
+ * Imperative settings tab — deliberately NOT the 1.13 declarative API, so
+ * one code path serves every app version from minAppVersion up. The folder
+ * picker is hand-rolled on AbstractInputSuggest (available since 1.4).
  */
 export class SearchosaurusSettingTab extends PluginSettingTab {
 	constructor(
-		app: SettingsHost["app"],
+		app: App,
 		private readonly host: SettingsHost,
 	) {
 		super(app, host);
-	}
-
-	getSettingDefinitions(): SettingDefinitionItem[] {
-		return [
-			{
-				name: "Hotkey",
-				desc: 'Searchosaurus ships without a default hotkey. Bind "Searchosaurus: Open search" under Settings → Hotkeys — Cmd/Ctrl+F (replacing "Search current file") or Cmd/Ctrl+Shift+F work well.',
-				aliases: ["keyboard", "shortcut"],
-			},
-			{
-				type: "list",
-				heading: "Excluded folders",
-				emptyState: "No folders excluded — the whole vault is indexed.",
-				addItem: {
-					name: "Exclude a folder",
-					action: () => {
-						this.host.settings.excludedFolders.push("");
-						this.update();
-					},
-				},
-				onDelete: (index) => {
-					this.host.settings.excludedFolders.splice(index, 1);
-					void this.persist();
-					this.update();
-				},
-				items: this.host.settings.excludedFolders.map((_, index) => ({
-					name: "",
-					searchable: false,
-					control: {
-						type: "folder",
-						key: `excludedFolder:${index}`,
-						placeholder: "Choose a folder…",
-					},
-				})),
-			},
-			{
-				name: "Result limit",
-				desc: "Maximum number of results shown at once.",
-				control: { type: "slider", key: "resultLimit", min: 10, max: 200, step: 10 },
-			},
-			{
-				type: "group",
-				heading: "Text extraction",
-				items: [
-					{
-						name: "Search text in images (OCR)",
-						desc: Platform.isDesktop
-							? "Runs fully offline. Enabling downloads the recognition models (~8 MB) once from the plugin's GitHub release; images are then processed in the background and cached."
-							: "OCR runs on desktop only. Results synced from a desktop device are still searchable here.",
-						aliases: ["ocr", "tesseract", "image text"],
-						control: {
-							type: "toggle",
-							key: "ocrEnabled",
-							disabled: () => !Platform.isDesktop,
-						},
-					},
-					{
-						name: "OCR languages",
-						desc: "Which recognition models to use for images.",
-						control: {
-							type: "dropdown",
-							key: "ocrLanguages",
-							options: {
-								"deu+eng": "German + English",
-								deu: "German",
-								eng: "English",
-							},
-						},
-					},
-					{
-						name: "Index PDF text",
-						desc: "Extract the text layer of PDFs so their content is searchable.",
-						control: { type: "toggle", key: "indexPdfText" },
-					},
-				],
-			},
-			{
-				type: "group",
-				heading: "Maintenance",
-				items: [
-					{
-						name: "Rebuild search index",
-						desc: "Drops the cached index and re-reads the whole vault. Use after bulk changes outside Obsidian or if results ever look stale.",
-						action: () => void this.host.rebuildIndex(),
-					},
-				],
-			},
-		];
-	}
-
-	getControlValue(key: string): unknown {
-		const settings = this.host.settings;
-		if (key.startsWith("excludedFolder:")) {
-			return settings.excludedFolders[Number(key.slice("excludedFolder:".length))] ?? "";
-		}
-		switch (key) {
-			case "ocrLanguages":
-				return settings.ocrLanguages.join("+");
-			default:
-				return (settings as unknown as Record<string, unknown>)[key];
-		}
-	}
-
-	async setControlValue(key: string, value: unknown): Promise<void> {
-		const settings = this.host.settings;
-		if (key.startsWith("excludedFolder:")) {
-			const index = Number(key.slice("excludedFolder:".length));
-			if (index >= 0 && index < settings.excludedFolders.length) {
-				settings.excludedFolders[index] = String(value).trim();
-			}
-			await this.persist();
-			return;
-		}
-		switch (key) {
-			case "ocrLanguages":
-				settings.ocrLanguages = String(value).split("+");
-				break;
-			case "resultLimit":
-				settings.resultLimit = Number(value);
-				break;
-			case "ocrEnabled":
-				settings.ocrEnabled = Boolean(value);
-				break;
-			case "indexPdfText":
-				settings.indexPdfText = Boolean(value);
-				break;
-		}
-		await this.persist();
 	}
 
 	private async persist(): Promise<void> {
@@ -184,17 +86,7 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 		this.host.onSettingsChanged();
 	}
 
-	/**
-	 * display() stays the render entry point on every Obsidian version —
-	 * on 1.13+ the BASE implementation renders getSettingDefinitions()
-	 * (folder-picker list included), so delegate there and only render the
-	 * imperative fallback (folders as a plain textarea) on older apps.
-	 */
 	display(): void {
-		if (requireApiVersion("1.13.0")) {
-			super.display();
-			return;
-		}
 		const { containerEl } = this;
 		containerEl.empty();
 		const settings = this.host.settings;
@@ -202,23 +94,7 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Hotkey")
 			.setDesc(
-				'Searchosaurus ships without a default hotkey. Bind "Searchosaurus: Open search" under Settings → Hotkeys.',
-			);
-
-		new Setting(containerEl)
-			.setName("Excluded folders")
-			.setDesc("One folder path per line. Files under these paths are not indexed.")
-			.addTextArea((text) =>
-				text
-					.setPlaceholder("templates/\narchive/")
-					.setValue(settings.excludedFolders.join("\n"))
-					.onChange(async (value) => {
-						settings.excludedFolders = value
-							.split("\n")
-							.map((line) => line.trim())
-							.filter((line) => line.length > 0);
-						await this.persist();
-					}),
+				'Searchosaurus ships without a default hotkey. Bind "Searchosaurus: Open search" under Settings → Hotkeys — Cmd/Ctrl+F (replacing "Search current file") or Cmd/Ctrl+Shift+F work well.',
 			);
 
 		new Setting(containerEl)
@@ -234,13 +110,50 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		new Setting(containerEl).setName("Excluded folders").setHeading();
+
+		settings.excludedFolders.forEach((folderPath, index) => {
+			new Setting(containerEl)
+				.addSearch((search) => {
+					search.setPlaceholder("Choose a folder…").setValue(folderPath);
+					new FolderSuggest(this.app, search.inputEl);
+					search.onChange(async (value) => {
+						settings.excludedFolders[index] = value.trim();
+						await this.persist();
+					});
+				})
+				.addExtraButton((button) =>
+					button
+						.setIcon("x")
+						.setTooltip("Remove")
+						.onClick(async () => {
+							settings.excludedFolders.splice(index, 1);
+							await this.persist();
+							this.display();
+						}),
+				);
+		});
+
+		new Setting(containerEl)
+			.setDesc(
+				settings.excludedFolders.length === 0
+					? "No folders excluded — the whole vault is indexed."
+					: "",
+			)
+			.addButton((button) =>
+				button.setButtonText("Exclude folder").onClick(() => {
+					settings.excludedFolders.push("");
+					this.display();
+				}),
+			);
+
 		new Setting(containerEl).setName("Text extraction").setHeading();
 
 		new Setting(containerEl)
 			.setName("Search text in images (OCR)")
 			.setDesc(
 				Platform.isDesktop
-					? "Runs fully offline. Enabling downloads the recognition models (~8 MB) once from the plugin's GitHub release."
+					? "Runs fully offline. Enabling downloads the recognition models (~8 MB) once from the plugin's GitHub release; images are then processed in the background and cached."
 					: "OCR runs on desktop only. Results synced from a desktop device are still searchable here.",
 			)
 			.addToggle((toggle) =>
@@ -282,7 +195,9 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Rebuild search index")
-			.setDesc("Drops the cached index and re-reads the whole vault.")
+			.setDesc(
+				"Drops the cached index and re-reads the whole vault. Use after bulk changes outside Obsidian or if results ever look stale.",
+			)
 			.addButton((button) =>
 				button.setButtonText("Rebuild").onClick(async () => {
 					button.setDisabled(true).setButtonText("Rebuilding…");
