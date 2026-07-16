@@ -1,0 +1,33 @@
+/* Searchosaurus — minimal result chrome. The Spotlight look (glass, motion)
+   lands in its own milestone; keep M1 visually native. */
+
+.searchosaurus-result {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-3);
+}
+
+.searchosaurus-result-icon {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.searchosaurus-result-text {
+	min-width: 0;
+}
+
+.searchosaurus-result-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.searchosaurus-result-secondary {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

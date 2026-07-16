@@ -1,0 +1,17 @@
+# build artifacts
+node_modules/
+main.js
+main.js.map
+
+# dev build output inside the test vault
+test-vault/.obsidian/plugins/searchosaurus/
+
+# obsidian workspace state in the test vault (machine-specific)
+test-vault/.obsidian/workspace.json
+test-vault/.obsidian/workspace-mobile.json
+
+# ocr runtime assets (lazy-downloaded in prod, copied from node_modules in dev)
+assets/ocr/
+
+# misc
+.DS_Store

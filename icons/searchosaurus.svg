@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Searchosaurus — a dino peeking through a magnifying glass.
+       Same minimal geometric family style as Linkosaurus / Scalosaurus. -->
+  <g fill="none" stroke="#3aa675" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <!-- magnifier -->
+    <circle cx="54" cy="54" r="34"/>
+    <line x1="79" y1="79" x2="106" y2="106"/>
+    <!-- dino silhouette inside the lens -->
+    <path d="M36 66 q4 -18 18 -18 q10 0 12 8 q2 7 8 7" stroke-width="6"/>
+    <!-- eye -->
+    <circle cx="52" cy="52" r="1.5" fill="#3aa675" stroke="none"/>
+    <!-- back spikes -->
+    <path d="M42 52 l4 -6 l4 6" stroke-width="4"/>
+  </g>
+</svg>
