@@ -354,6 +354,43 @@ body.is-phone .searchosaurus-modal.prompt {
 	box-shadow: none;
 }
 
+/* Roomier input, clear of the top edge. */
+body.is-phone .searchosaurus-modal .prompt-input {
+	padding: var(--size-4-3) var(--size-4-4);
+	font-size: var(--font-ui-medium);
+}
+
+/* Filter row: breathing room above/below, edges aligned with the input. */
+body.is-phone .searchosaurus-filter-row {
+	padding: var(--size-4-2) var(--size-4-4) var(--size-4-2);
+}
+
+body.is-phone .searchosaurus-filter-kinds {
+	gap: var(--size-4-2);
+}
+
+/* Result list: consistent side padding + safe-area clearance at the
+   bottom so the last row never hides behind the home indicator. */
+body.is-phone .searchosaurus-modal .prompt-results {
+	padding: var(--size-4-1) var(--size-4-2)
+		calc(var(--size-4-4) + env(safe-area-inset-bottom, 0px));
+}
+
+/* Rows: even vertical rhythm, secondary line slightly separated. */
+body.is-phone .searchosaurus-result {
+	gap: var(--size-4-3);
+	border-radius: var(--radius-m);
+}
+
+body.is-phone .searchosaurus-result-title {
+	line-height: 1.35;
+}
+
+body.is-phone .searchosaurus-result-secondary {
+	margin-top: 1px;
+	line-height: 1.35;
+}
+
 /* The app animates its own prompt presentation — don't fight it. */
 body.is-phone .searchosaurus-modal.prompt,
 body.is-phone .searchosaurus-modal.is-entering .suggestion-item {
@@ -376,10 +413,7 @@ body.is-mobile .searchosaurus-result {
 
 body.is-mobile .searchosaurus-filter-button {
 	padding: var(--size-4-2) var(--size-4-3);
-}
-
-body.is-mobile .searchosaurus-filter-row {
-	padding-bottom: var(--size-4-2);
+	--icon-size: var(--icon-l, 20px);
 }
 
 /* Keyboard hints and held-modifier badges mean nothing on touch. */
