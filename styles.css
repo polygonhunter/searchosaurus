@@ -100,6 +100,12 @@
 	color: var(--text-normal);
 }
 
+/* Keyboard focus only — mouse clicks stay ring-free. */
+.searchosaurus-filter-button:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
 .searchosaurus-sort-button.is-active {
 	color: var(--text-accent);
 }

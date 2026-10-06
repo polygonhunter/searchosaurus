@@ -42,6 +42,7 @@ export class FilterRow {
 			const button = kindsEl.createEl("button", { cls: "searchosaurus-filter-button" });
 			setIcon(button, iconForKind(kind));
 			setTooltip(button, label);
+			button.setAttribute("aria-label", label);
 			button.addEventListener("click", () => {
 				this.state.kind = this.state.kind === kind ? null : kind;
 				this.render();
@@ -55,6 +56,7 @@ export class FilterRow {
 		});
 		setIcon(this.sortButton, "clock");
 		setTooltip(this.sortButton, "Sort by modified date");
+		this.sortButton.setAttribute("aria-label", "Sort by modified date");
 		this.sortButton.addEventListener("click", () => {
 			this.state.sort = this.state.sort === "relevance" ? "modified" : "relevance";
 			this.render();
@@ -75,6 +77,7 @@ export class FilterRow {
 		const active = this.operatorKind ?? this.state.kind;
 		for (const [kind, button] of this.buttons) {
 			button.toggleClass("is-active", kind === active);
+			button.setAttribute("aria-pressed", kind === active ? "true" : "false");
 		}
 		this.sortButton.toggleClass("is-active", this.state.sort === "modified");
 		this.sortButton.setAttribute(
