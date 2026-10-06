@@ -134,6 +134,25 @@ describe("SearchEngine", () => {
 		expect(engine.search("projektplenong")[0]?.id).toBe("a.md");
 	});
 
+	it("excludes literally: 'projekt -test' keeps testament/text notes", () => {
+		const engine = makeEngine();
+		engine.upsert(doc({ id: "a.md", basename: "Projekt A", body: "das testament" }));
+		engine.upsert(doc({ id: "b.md", basename: "Projekt B", body: "ein text" }));
+		engine.upsert(doc({ id: "c.md", basename: "Projekt C", body: "ein test" }));
+		const ids = engine.searchWithExcludes("projekt", ["test"]).map((h) => h.id).sort();
+		expect(ids).toEqual(["a.md", "b.md"]);
+	});
+
+	it("excludes across all fields even when the query is title-only", () => {
+		const engine = makeEngine();
+		engine.upsert(doc({ id: "a.md", basename: "Projekt A", body: "geheim" }));
+		engine.upsert(doc({ id: "b.md", basename: "Projekt B" }));
+		const ids = engine
+			.searchWithExcludes("projekt", ["geheim"], { fields: ["basename", "aliases", "url"] })
+			.map((h) => h.id);
+		expect(ids).toEqual(["b.md"]);
+	});
+
 	it("returns [] for empty queries", () => {
 		const engine = makeEngine();
 		engine.upsert(doc({ id: "a.md", basename: "a" }));

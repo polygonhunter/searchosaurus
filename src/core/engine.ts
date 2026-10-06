@@ -103,7 +103,20 @@ export class SearchEngine {
 		if (excludes.length === 0) return this.search(query, options);
 		const combined: Query = {
 			combineWith: "AND_NOT",
-			queries: [query, { combineWith: "OR", queries: [...excludes] }],
+			queries: [
+				query,
+				{
+					// Exclusions are literal: "-test" must not drop notes that
+					// merely contain "testament" (prefix) or "text" (fuzzy) —
+					// and they apply to every field, even under a typed
+					// operator that narrows the positive query to titles.
+					combineWith: "OR",
+					queries: [...excludes],
+					prefix: false,
+					fuzzy: false,
+					fields: [...INDEX_FIELDS],
+				},
+			],
 		};
 		return this.mini.search(combined, options) as unknown as SearchHit[];
 	}
