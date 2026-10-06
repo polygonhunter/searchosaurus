@@ -46,11 +46,13 @@ Say your vault has a note `People/Mira Holt.md` (alias `Miri`) plus a dozen jour
 | `⇥` | Insert a link to the result at your cursor |
 | `⌘C` | Copy a link to the result |
 | `⌘P` | Pin / unpin (pinned notes lead the launcher) |
-| `⌘1–9` | Open a result directly — numbers appear while ⌘ is held |
-| `→` / `←` | Drill into the notes linking here / back |
+| `⌘1–9` | Open a result directly, in the current tab — numbers appear while ⌘ is held |
+| `→` / `←` `Esc` | Drill into the notes linking here / back |
 | `↑` | Recall recent searches (empty input) |
 
-Unresolved `[[wikilinks]]` show up as quiet ghost rows — choosing one creates the note. A search with no matches offers to create the note instead of showing nothing.
+Unresolved `[[wikilinks]]` show up as quiet ghost rows — choosing one creates the note. A search with no matches offers to create the note instead of showing nothing (in the `p:` folder, if you gave one).
+
+Text selected in the editor (one short line) becomes the starting query. Scripts and launchers can open a search directly: `obsidian://searchosaurus?query=mira%20holt`.
 
 ## Setup
 
