@@ -1,4 +1,4 @@
-import { Keymap, Notice, setIcon, SuggestModal, type App, type PaneType } from "obsidian";
+import { Keymap, Notice, Platform, setIcon, SuggestModal, type App, type PaneType } from "obsidian";
 import type { SearchEngine } from "../core/engine";
 import { TITLE_FIELDS } from "../core/engine";
 import { topFrecent } from "../core/frecency";
@@ -23,6 +23,10 @@ const ENTER_DURATION_MS = 450;
 const LAUNCHER_LIMIT = 12;
 /** Ghost (unresolved-link) rows appended to a search at most. */
 const GHOST_LIMIT = 3;
+/** Coalesce preview renders while arrow keys auto-repeat. */
+const PREVIEW_DELAY_MS = 50;
+/** Matches the CSS breakpoint below which the preview pane is hidden. */
+const PREVIEW_MIN_WIDTH = 701;
 
 /** Everything the modal needs from the plugin, without importing main.ts. */
 export interface ModalHost {
@@ -55,6 +59,9 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	/** Position while ↑-browsing history from the empty input. */
 	private historyPos: number | null = null;
 	private settingQueryProgrammatically = false;
+	/** hit id + query of what the preview shows/is about to show. */
+	private lastPreviewKey = "";
+	private previewTimer: number | null = null;
 
 	private readonly modHeld = (event: KeyboardEvent) => {
 		if (event.key === "Meta" || event.key === "Control") {
@@ -97,7 +104,13 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 		// SuggestModal exposes no selection hook; the selected row is marked
 		// with .is-selected, so observe class flips on the result container.
-		this.selectionObserver = new MutationObserver(() => this.syncSelection());
+		this.selectionObserver = new MutationObserver((mutations) => {
+			// Only selection flips on result rows matter — not every class
+			// change inside rendered snippets/marks.
+			if (mutations.some((m) => (m.target as HTMLElement).hasClass?.("suggestion-item"))) {
+				this.syncSelection();
+			}
+		});
 		this.selectionObserver.observe(this.resultContainerEl, {
 			subtree: true,
 			attributeFilter: ["class"],
@@ -124,6 +137,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		activeWindow.removeEventListener("keydown", this.modHeld);
 		activeWindow.removeEventListener("keyup", this.modHeld);
 		this.selectionObserver.disconnect();
+		this.cancelPreview();
 		this.preview.destroy();
 		super.onClose();
 	}
@@ -242,7 +256,11 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		this.currentHits = hits;
 		this.currentWords = words;
 		this.selectedIndex = 0;
-		if (hits.length === 0) this.preview.clear();
+		if (hits.length === 0) {
+			this.cancelPreview();
+			this.lastPreviewKey = "";
+			this.preview.clear();
+		}
 		return hits;
 	}
 
@@ -553,11 +571,32 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		});
 		if (selected >= 0) this.selectedIndex = selected;
 		const hit = selected >= 0 ? this.currentHits[selected] : undefined;
-		if (hit && !hit.ghost && !hit.create) {
-			void this.preview.show(hit, this.currentWords);
-		} else {
-			this.preview.clear();
+		if (!hit || hit.ghost || hit.create || !this.previewVisible()) {
+			this.cancelPreview();
+			if (this.lastPreviewKey !== "") this.preview.clear();
+			this.lastPreviewKey = "";
+			return;
 		}
+		// Same row, same query: the preview is already right — no re-render.
+		const key = `${hit.id}\u0000${this.currentWords.join(" ")}`;
+		if (key === this.lastPreviewKey) return;
+		this.lastPreviewKey = key;
+		this.cancelPreview();
+		const words = this.currentWords;
+		this.previewTimer = window.setTimeout(() => {
+			this.previewTimer = null;
+			void this.preview.show(hit, words);
+		}, PREVIEW_DELAY_MS);
+	}
+
+	/** The pane is display:none on phones and narrow windows — skip renders. */
+	private previewVisible(): boolean {
+		return !Platform.isPhone && activeWindow.innerWidth >= PREVIEW_MIN_WIDTH;
+	}
+
+	private cancelPreview(): void {
+		if (this.previewTimer !== null) window.clearTimeout(this.previewTimer);
+		this.previewTimer = null;
 	}
 
 	/**

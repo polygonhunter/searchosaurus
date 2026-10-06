@@ -16,6 +16,8 @@ const MAX_MARKS = 40;
 export class PreviewPane {
 	private component: Component | null = null;
 	private token = 0;
+	/** After destroy(): late show() calls must not touch the DOM. */
+	private closed = false;
 
 	constructor(
 		private readonly app: App,
@@ -27,20 +29,28 @@ export class PreviewPane {
 		onEmptyChange?.(true);
 	}
 
+	/** Final teardown (modal closed). */
 	destroy(): void {
+		this.closed = true;
+		this.reset();
+	}
+
+	/** Invalidate in-flight renders and unload the current markdown. */
+	private reset(): void {
 		this.token += 1;
 		this.component?.unload();
 		this.component = null;
 	}
 
 	clear(): void {
-		this.destroy();
+		this.reset();
 		this.el.empty();
 		this.el.addClass("is-empty");
 		this.onEmptyChange?.(true);
 	}
 
 	async show(hit: SearchHit, queryWords: readonly string[]): Promise<void> {
+		if (this.closed) return;
 		const token = ++this.token;
 		const file = this.app.vault.getFileByPath(hit.path);
 		if (!file) {
@@ -50,9 +60,12 @@ export class PreviewPane {
 
 		// Build into a detached element; swap in only if still current.
 		const next = createDiv();
+		// Markdown gets its own component; it replaces the live one only on
+		// swap-in, so a stale render never unloads what is on screen.
+		let component: Component | null = null;
 		switch (hit.kind) {
 			case "note":
-				await this.buildNote(next, file, queryWords);
+				component = await this.buildNote(next, file, queryWords, token);
 				break;
 			case "image":
 				this.buildImage(next, file);
@@ -64,8 +77,13 @@ export class PreviewPane {
 				this.buildFile(next, file);
 				break;
 		}
-		if (token !== this.token) return;
+		if (token !== this.token || this.closed) {
+			component?.unload();
+			return;
+		}
 
+		this.component?.unload();
+		this.component = component;
 		this.el.empty();
 		this.el.removeClass("is-empty");
 		this.onEmptyChange?.(false);
@@ -73,15 +91,22 @@ export class PreviewPane {
 		this.el.createDiv({ cls: "searchosaurus-preview-path", text: hit.path });
 	}
 
-	private async buildNote(el: HTMLElement, file: TFile, queryWords: readonly string[]): Promise<void> {
+	private async buildNote(
+		el: HTMLElement,
+		file: TFile,
+		queryWords: readonly string[],
+		token: number,
+	): Promise<Component | null> {
 		const body = await this.app.vault.cachedRead(file);
+		// Superseded while reading — skip the (expensive) markdown render.
+		if (token !== this.token || this.closed) return null;
 		const excerpt = excerptAround(stripFrontmatter(body), queryWords);
 		const contentEl = el.createDiv({ cls: "searchosaurus-preview-note markdown-rendered" });
-		this.component?.unload();
-		this.component = new Component();
-		this.component.load();
-		await MarkdownRenderer.render(this.app, excerpt, contentEl, file.path, this.component);
+		const component = new Component();
+		component.load();
+		await MarkdownRenderer.render(this.app, excerpt, contentEl, file.path, component);
 		markMatches(contentEl, queryWords);
+		return component;
 	}
 
 	private buildImage(el: HTMLElement, file: TFile): void {
