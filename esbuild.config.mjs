@@ -35,7 +35,23 @@ if (!prod) {
 	}
 }
 
+// tesseract.js requires regenerator-runtime for old browsers; its main-
+// thread code is native async/await and never calls it. Bundling it costs
+// ~6.7 KB and puts a Function() constructor into main.js — stub it out.
+// (The worker side lives in worker.min.js, an asset, not in this bundle.)
+const stubRegenerator = {
+	name: "stub-regenerator-runtime",
+	setup(build) {
+		build.onResolve({ filter: /^regenerator-runtime(\/runtime)?$/ }, (args) => ({
+			path: args.path,
+			namespace: "stub-empty",
+		}));
+		build.onLoad({ filter: /.*/, namespace: "stub-empty" }, () => ({ contents: "", loader: "js" }));
+	},
+};
+
 const context = await esbuild.context({
+	plugins: [stubRegenerator],
 	banner: {
 		js: banner,
 	},
