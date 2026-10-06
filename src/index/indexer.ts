@@ -41,6 +41,8 @@ export class Indexer {
 		private readonly getSettings: () => SearchosaurusSettings,
 		/** Attachment hook: the OCR/PDF pipeline decides what to extract. */
 		private readonly onAttachment?: (file: TFile, priority: "high" | "low") => void,
+		/** A path left the index (deleted/excluded): drop pending extraction. */
+		private readonly onForget?: (path: string) => void,
 	) {
 		// appId is undocumented but stable — used to key the per-vault cache.
 		const appId = (app as unknown as { appId?: string }).appId ?? "default";
@@ -72,7 +74,7 @@ export class Indexer {
 			}
 		}
 		this.registerEvents(plugin);
-		this.diffVault();
+		this.reconcile();
 	}
 
 	/**
@@ -113,7 +115,7 @@ export class Indexer {
 		this.linkDocs.clear();
 		this.extracted.clear();
 		await this.persistence.clear();
-		this.diffVault();
+		this.reconcile();
 	}
 
 	private registerEvents(plugin: Plugin): void {
@@ -148,12 +150,22 @@ export class Indexer {
 		);
 	}
 
-	/** Queue every new/stale file; drop deleted ones from the index. */
-	private diffVault(): void {
+	/**
+	 * Bring the index in line with vault + settings: queue every new/stale
+	 * file, drop deleted ones, and drop files that are now excluded (so a
+	 * newly excluded folder vanishes from results right away).
+	 */
+	reconcile(): void {
+		if (this.stopped) return;
 		const seen = new Set<string>();
 		for (const file of this.app.vault.getFiles()) {
 			seen.add(file.path);
-			if (this.isExcluded(file.path)) continue;
+			if (this.isExcluded(file.path)) {
+				if (this.indexedFiles.has(file.path) || this.queued.has(file.path)) {
+					this.forget(file.path);
+				}
+				continue;
+			}
 			if (this.indexedFiles.get(file.path) !== file.stat.mtime) {
 				this.enqueue(file.path);
 			}
@@ -180,7 +192,11 @@ export class Indexer {
 		this.linkDocs.delete(path);
 		this.indexedFiles.delete(path);
 		this.extracted.delete(path);
-		this.queued.delete(path);
+		if (this.queued.delete(path)) {
+			const index = this.queue.indexOf(path);
+			if (index >= 0) this.queue.splice(index, 1);
+		}
+		this.onForget?.(path);
 		this.saveSoon();
 	}
 

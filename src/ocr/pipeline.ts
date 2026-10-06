@@ -75,6 +75,11 @@ export class OcrPipeline {
 		await this.cache.save();
 	}
 
+	/** The path left the index (excluded/deleted): drop its pending job. */
+	forget(path: string): void {
+		this.queue.drop(path);
+	}
+
 	/** Enqueue every eligible attachment (used when OCR gets switched on). */
 	scanVault(priority: "high" | "low" = "low"): void {
 		const excluded = this.getSettings().excludedFolders;

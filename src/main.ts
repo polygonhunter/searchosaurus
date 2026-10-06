@@ -43,6 +43,7 @@ export default class SearchosaurusPlugin extends Plugin {
 			DEFAULT_WEIGHTS,
 			() => this.settings,
 			(file, priority) => this.pipeline?.consider(file, priority),
+			(path) => this.pipeline?.forget(path),
 		);
 
 		const openSearch = () => {
