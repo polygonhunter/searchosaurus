@@ -45,6 +45,8 @@ const ENTER_DURATION_MS = 450;
 const LAUNCHER_LIMIT = 12;
 /** Ghost (unresolved-link) rows appended to a search at most. */
 const GHOST_LIMIT = 3;
+/** Modifier as the platform spells it: ⌘ on macOS/iOS, Ctrl+ elsewhere. */
+const MOD = Platform.isMacOS || Platform.isIosApp ? "⌘" : "Ctrl+";
 /** Rows whose snippet is built right away; the rest when scrolled into view. */
 const EAGER_SNIPPET_ROWS = 12;
 /** Snippets only search the first part of a note (huge notes stay cheap). */
@@ -140,7 +142,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		// The one allowed piece of help: a single faint line, empty state only.
 		this.modalEl.createDiv({
 			cls: "searchosaurus-hint",
-			text: "⇥ insert link · ⌘↵ new tab · ⌘C copy · ⌘P pin · → backlinks · ↑ history",
+			text: `⇥ insert link · ${MOD}↵ new tab · ${MOD}C copy · ${MOD}P pin · → backlinks · ↑ history`,
 		});
 
 		// SuggestModal exposes no selection hook; the selected row is marked

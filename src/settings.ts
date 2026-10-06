@@ -90,11 +90,12 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 		const settings = this.host.settings;
+		const mod = Platform.isMacOS ? "Cmd+" : "Ctrl+";
 
 		new Setting(containerEl)
 			.setName("Hotkey")
 			.setDesc(
-				'Searchosaurus ships without a default hotkey. Bind "Searchosaurus: Open search" under Settings → Hotkeys — Cmd/Ctrl+F (replacing "Search current file") or Cmd/Ctrl+Shift+F work well.',
+				`Searchosaurus ships without a default hotkey. Bind "Searchosaurus: Open search" under Settings → Hotkeys — ${mod}F (replacing "Search current file") or ${mod}Shift+F work well.`,
 			);
 
 		new Setting(containerEl)
