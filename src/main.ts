@@ -108,6 +108,9 @@ export default class SearchosaurusPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		// Flush pending writes first — a debounced save cancelled on unload
+		// would silently lose the last opens/pins and index changes.
+		this.saveDataSoon.run();
 		this.indexer?.stop();
 		this.indexer = null;
 		void this.pipeline?.destroy();

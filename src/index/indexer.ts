@@ -67,9 +67,10 @@ export class Indexer {
 		this.diffVault();
 	}
 
+	/** Stop processing and flush a pending snapshot instead of dropping it. */
 	stop(): void {
 		this.stopped = true;
-		this.saveSoon.cancel();
+		this.saveSoon.run();
 	}
 
 	/** Wipe everything and re-index from scratch (settings escape hatch). */
