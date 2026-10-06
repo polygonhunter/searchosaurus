@@ -105,6 +105,7 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 				slider
 					.setLimits(10, 200, 10)
 					.setValue(settings.resultLimit)
+					.setDynamicTooltip()
 					.onChange(async (value) => {
 						settings.resultLimit = value;
 						await this.persist();
@@ -164,23 +165,27 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						settings.ocrEnabled = value;
 						await this.persist();
+						this.display(); // show/hide the language row
 					}),
 			);
 
-		new Setting(containerEl)
-			.setName("OCR languages")
-			.setDesc("Which recognition models to use for images.")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("deu+eng", "German + English")
-					.addOption("deu", "German")
-					.addOption("eng", "English")
-					.setValue(settings.ocrLanguages.join("+"))
-					.onChange(async (value) => {
-						settings.ocrLanguages = value.split("+");
-						await this.persist();
-					}),
-			);
+		// Languages only matter where OCR actually runs.
+		if (settings.ocrEnabled && Platform.isDesktop) {
+			new Setting(containerEl)
+				.setName("OCR languages")
+				.setDesc("Which recognition models to use for images.")
+				.addDropdown((dropdown) =>
+					dropdown
+						.addOption("deu+eng", "German + English")
+						.addOption("deu", "German")
+						.addOption("eng", "English")
+						.setValue(settings.ocrLanguages.join("+"))
+						.onChange(async (value) => {
+							settings.ocrLanguages = value.split("+");
+							await this.persist();
+						}),
+				);
+		}
 
 		new Setting(containerEl)
 			.setName("Index PDF text")

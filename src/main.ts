@@ -31,6 +31,7 @@ export default class SearchosaurusPlugin extends Plugin {
 	private pipeline: OcrPipeline | null = null;
 	/** Settings as last applied — onSettingsChanged diffs against this. */
 	private appliedSettings: SearchosaurusSettings = { ...DEFAULT_SETTINGS };
+	private settingTab: SearchosaurusSettingTab | null = null;
 	/** One shared in-flight asset download, however often OCR is toggled. */
 	private assetsPromise: Promise<boolean> | null = null;
 
@@ -96,7 +97,8 @@ export default class SearchosaurusPlugin extends Plugin {
 			openSearch(typeof params.query === "string" ? params.query : undefined);
 		});
 
-		this.addSettingTab(new SearchosaurusSettingTab(this.app, this));
+		this.settingTab = new SearchosaurusSettingTab(this.app, this);
+		this.addSettingTab(this.settingTab);
 
 		// Frecency: count every open; renames keep their history.
 		this.registerEvent(
@@ -154,7 +156,15 @@ export default class SearchosaurusPlugin extends Plugin {
 		if (change.pdfStopped) this.pipeline?.stopPdf();
 		if (change.ocrStarted && Platform.isDesktop) {
 			// One-time asset download, then sweep existing images/PDFs.
-			void this.ensureAssetsOnce().then((ok) => {
+			void this.ensureAssetsOnce().then(async (ok) => {
+				if (!ok && this.settings.ocrEnabled) {
+					// Download failed (Notice already shown): switch OCR back
+					// off so the toggle tells the truth and a retry is a click.
+					this.settings.ocrEnabled = false;
+					this.appliedSettings = snapshotSettings(this.settings);
+					await this.saveSettings();
+					if (this.settingTab?.containerEl.isShown()) this.settingTab.display();
+				}
 				if ((ok && this.settings.ocrEnabled) || change.pdfStarted) this.pipeline?.scanVault();
 			});
 		} else if (change.pdfStarted) {
