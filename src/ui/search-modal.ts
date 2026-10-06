@@ -305,6 +305,14 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			}
 			return;
 		}
+		// Esc inside the drill-down steps back out instead of closing —
+		// same pattern as the arrow keys: handled before the modal's scope.
+		if (event.key === "Escape" && this.drilldown) {
+			event.preventDefault();
+			event.stopPropagation();
+			this.exitDrilldown();
+			return;
+		}
 		if (event.key === "ArrowLeft" && this.drilldown && value === "") {
 			event.preventDefault();
 			event.stopPropagation();
@@ -787,7 +795,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		this.drilldown = target;
 		this.savedQuery = this.inputEl.value;
 		this.modalEl.addClass("is-drilldown");
-		this.inputEl.placeholder = `Linked to “${target.basename}” — ← back`;
+		this.inputEl.placeholder = `Linked to “${target.basename}” — ← or Esc back`;
 		this.setQuery("");
 	}
 
