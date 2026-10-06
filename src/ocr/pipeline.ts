@@ -143,19 +143,12 @@ export class OcrPipeline {
 		this.queue.push(
 			file.path,
 			async () => {
-				if (!(await this.assetsReady()) || this.destroyed) return;
+				if (!(await this.assetsReady()) || !this.isCurrent(file)) return;
+				const version = { mtime: file.stat.mtime, size: file.stat.size };
 				const url = this.app.vault.getResourcePath(file);
 				const service = await this.getService();
 				const text = await service.recognize(url, langs);
-				if (this.destroyed) return;
-				this.cache.set(file.path, {
-					mtime: file.stat.mtime,
-					size: file.stat.size,
-					langs,
-					text,
-				});
-				this.apply(file, text);
-				await this.cache.save();
+				this.store(file, version, langs, text);
 			},
 			priority,
 		);
@@ -165,19 +158,40 @@ export class OcrPipeline {
 		this.queue.push(
 			file.path,
 			async () => {
+				if (!this.isCurrent(file)) return;
+				const version = { mtime: file.stat.mtime, size: file.stat.size };
 				const text = await this.extractPdfText(file);
-				if (this.destroyed) return;
-				this.cache.set(file.path, {
-					mtime: file.stat.mtime,
-					size: file.stat.size,
-					langs: "pdf",
-					text,
-				});
-				this.apply(file, text);
-				await this.cache.save();
+				this.store(file, version, "pdf", text);
 			},
 			priority,
 		);
+	}
+
+	/** Still the live file at its path (not deleted/replaced), not unloaded. */
+	private isCurrent(file: TFile): boolean {
+		return !this.destroyed && this.app.vault.getFileByPath(file.path) === file;
+	}
+
+	/**
+	 * Cache + apply a finished extraction — unless the file vanished, or it
+	 * changed while we were reading it: then the text belongs to an older
+	 * version, so re-queue instead of caching it under the new mtime.
+	 */
+	private store(
+		file: TFile,
+		version: { mtime: number; size: number },
+		langs: string,
+		text: string,
+	): void {
+		if (!this.isCurrent(file)) return;
+		if (file.stat.mtime !== version.mtime || file.stat.size !== version.size) {
+			// The job's key is released right after this run — retry then.
+			window.setTimeout(() => this.consider(file, "high"), 0);
+			return;
+		}
+		this.cache.set(file.path, { ...version, langs, text });
+		this.apply(file, text);
+		void this.cache.save();
 	}
 
 	private async extractPdfText(file: TFile): Promise<string> {

@@ -227,6 +227,8 @@ export class Indexer {
 		if (!file) return;
 		try {
 			const docs = await extractDocs(this.app, file);
+			// Deleted/renamed while reading: the event handlers own it now.
+			if (this.stopped || this.app.vault.getFileByPath(path) !== file) return;
 			const newLinkIds = new Set(
 				docs.filter((doc) => doc.kind === "link").map((doc) => doc.id),
 			);
