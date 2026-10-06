@@ -205,17 +205,25 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			if (hit && !hit.ghost && !hit.create) this.togglePin(hit);
 			return false;
 		});
+		// ⌘1–9 picks a row by number and opens it right here — the held ⌘
+		// is the chord, not a request for a new tab.
 		for (let n = 1; n <= 9; n++) {
-			this.scope.register(["Mod"], String(n), (event) => {
+			this.scope.register(["Mod"], String(n), () => {
 				const hit = this.currentHits[n - 1];
-				if (hit) {
-					this.rememberQuery();
-					this.close();
-					this.onChooseSuggestion(hit, event);
-				}
+				if (hit) this.chooseAndOpen(hit, false);
 				return false;
 			});
 		}
+		this.scope.register(["Mod"], "Enter", () => {
+			const hit = this.selectedHit();
+			if (hit) this.chooseAndOpen(hit, "tab");
+			return false;
+		});
+		this.scope.register(["Mod", "Alt"], "Enter", () => {
+			const hit = this.selectedHit();
+			if (hit) this.chooseAndOpen(hit, "split");
+			return false;
+		});
 	}
 
 	/** Arrow-key layer: history from the empty input, drill-down with →/←. */
@@ -576,13 +584,25 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 	onChooseSuggestion(hit: SearchHit, evt: MouseEvent | KeyboardEvent): void {
 		this.rememberQuery();
+		this.openHit(hit, Keymap.isModEvent(evt));
+	}
+
+	/** Keyboard-chord path: remember, close, open in the given pane. */
+	private chooseAndOpen(hit: SearchHit, paneType: PaneType | boolean): void {
+		this.rememberQuery();
+		this.close();
+		this.openHit(hit, paneType);
+	}
+
+	/** Open a hit; paneType false = current tab, otherwise tab/split/window. */
+	private openHit(hit: SearchHit, paneType: PaneType | boolean): void {
 		if (hit.ghost || hit.create) {
 			// openLinkText on a non-existing target creates the note.
-			void this.app.workspace.openLinkText(hit.basename, "", false);
+			void this.app.workspace.openLinkText(hit.basename, "", paneType);
 			return;
 		}
 		if (hit.kind === "link") {
-			if (hit.url && Keymap.isModEvent(evt)) {
+			if (hit.url && paneType !== false) {
 				window.open(hit.url);
 				return;
 			}
@@ -590,10 +610,10 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			return;
 		}
 		if (hit.kind === "note") {
-			void this.openNoteAtMatch(hit, Keymap.isModEvent(evt));
+			void this.openNoteAtMatch(hit, paneType);
 			return;
 		}
-		void this.app.workspace.openLinkText(hit.path, "", Keymap.isModEvent(evt));
+		void this.app.workspace.openLinkText(hit.path, "", paneType);
 	}
 
 	/** ⇥ — drop a link to the selected result at the cursor and be done. */
