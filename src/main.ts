@@ -1,4 +1,5 @@
 import { debounce, Notice, Platform, Plugin } from "obsidian";
+import { coversData, mergePersistentData } from "./core/merge-data";
 import { diffSettings, snapshotSettings } from "./core/settings-diff";
 import { SearchEngine } from "./core/engine";
 import { bumpFrecency, pruneFrecency, renameFrecency } from "./core/frecency";
@@ -169,6 +170,25 @@ export default class SearchosaurusPlugin extends Plugin {
 		this.settings = { ...DEFAULT_SETTINGS, ...(raw?.settings ?? {}) };
 		this.data = { ...structuredClone(DEFAULT_DATA), ...(raw?.data ?? {}) };
 		this.appliedSettings = snapshotSettings(this.settings);
+	}
+
+	/**
+	 * data.json changed on disk (Obsidian Sync, another device). Settings
+	 * follow the file; pins/frecency/history are merged so neither side's
+	 * recent opens are lost. The merge is written back only if it differs
+	 * from the file, so two devices converge instead of ping-ponging.
+	 */
+	async onExternalSettingsChange(): Promise<void> {
+		const raw = (await this.loadData()) as Partial<StoredShape> | null;
+		if (!raw) return;
+		this.settings = { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) };
+		const remote = { ...structuredClone(DEFAULT_DATA), ...(raw.data ?? {}) };
+		const merged = mergePersistentData(this.data, remote);
+		// Mutate in place: open modals hold a reference to this.data.
+		Object.assign(this.data, merged);
+		this.onSettingsChanged();
+		// Write back only if the file lacks something we have (pins/opens).
+		if (!coversData(remote, merged)) this.saveDataSoon();
 	}
 
 	async saveSettings(): Promise<void> {

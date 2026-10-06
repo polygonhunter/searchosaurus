@@ -1,6 +1,6 @@
 /** Search-query history, newest first, deduplicated, bounded. */
 
-const MAX_HISTORY = 50;
+export const MAX_HISTORY = 50;
 
 export function pushHistory(history: readonly string[], query: string): string[] {
 	const trimmed = query.trim();
