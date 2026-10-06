@@ -76,6 +76,10 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	private settingQueryProgrammatically = false;
 	/** hit id + query of what the preview shows/is about to show. */
 	private lastPreviewKey = "";
+	/** Unresolved link names, folded — built once per open. */
+	private ghostCandidates: Array<{ name: string; folded: string }> | null = null;
+	/** Backlinks of the current drill-down target, folded. */
+	private backlinkCandidates: { target: string; items: FoldedCandidate[] } | null = null;
 	/** Per-open cache: folded note heads for snippets, keyed by path. */
 	private readonly textCache = new Map<string, CachedText>();
 	/** Lazily fills snippets of rows that scroll into view. */
@@ -332,30 +336,44 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 	/** Notes linking to the drill-down target, newest first. */
 	private backlinkHits(target: SearchHit, query: string): SearchHit[] {
-		const hits: SearchHit[] = [];
+		// Built once per drill-down; keystrokes only filter.
+		if (this.backlinkCandidates?.target !== target.path) {
+			this.backlinkCandidates = { target: target.path, items: this.collectBacklinks(target) };
+		}
+		const q = fold(query);
+		const filtered =
+			q.length > 0
+				? this.backlinkCandidates.items.filter(
+						(c) => c.foldedName.includes(q) || c.foldedPath.includes(q),
+					)
+				: this.backlinkCandidates.items;
+		return filtered.slice(0, this.host.settings().resultLimit).map((c) => c.hit);
+	}
+
+	private collectBacklinks(target: SearchHit): FoldedCandidate[] {
+		const items: FoldedCandidate[] = [];
 		const resolved = this.app.metadataCache.resolvedLinks;
 		for (const [source, targets] of Object.entries(resolved)) {
 			if ((targets[target.path] ?? 0) === 0) continue;
 			const file = this.app.vault.getFileByPath(source);
 			if (!file) continue;
-			hits.push({
-				id: source,
-				score: 0,
-				kind: "note",
-				path: source,
-				basename: file.basename,
-				mtime: file.stat.mtime,
-				aliasList: [],
-				tagList: [],
+			items.push({
+				hit: {
+					id: source,
+					score: 0,
+					kind: "note",
+					path: source,
+					basename: file.basename,
+					mtime: file.stat.mtime,
+					aliasList: [],
+					tagList: [],
+				},
+				foldedName: fold(file.basename),
+				foldedPath: fold(source),
 			});
 		}
-		const q = fold(query);
-		const filtered =
-			q.length > 0
-				? hits.filter((h) => fold(h.basename).includes(q) || fold(h.path).includes(q))
-				: hits;
-		filtered.sort((a, b) => b.mtime - a.mtime);
-		return filtered.slice(0, this.host.settings().resultLimit);
+		items.sort((a, b) => b.hit.mtime - a.hit.mtime);
+		return items;
 	}
 
 	/** Unresolved [[wikilinks]] matching the query — creatable ghosts. */
@@ -364,13 +382,10 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		const q = fold(parsed.text);
 		if (q.length === 0) return [];
 		const existingTitles = new Set(existing.map((h) => fold(h.basename)));
-		const names = new Set<string>();
-		for (const targets of Object.values(this.app.metadataCache.unresolvedLinks)) {
-			for (const name of Object.keys(targets)) names.add(name);
-		}
+		// Unresolved names are collected and folded once per modal open.
+		this.ghostCandidates ??= this.collectGhosts();
 		const ghosts: SearchHit[] = [];
-		for (const name of names) {
-			const folded = fold(name);
+		for (const { name, folded } of this.ghostCandidates) {
 			if (!folded.includes(q) || existingTitles.has(folded)) continue;
 			ghosts.push({
 				id: `ghost:${name}`,
@@ -386,6 +401,14 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			if (ghosts.length >= GHOST_LIMIT) break;
 		}
 		return ghosts;
+	}
+
+	private collectGhosts(): Array<{ name: string; folded: string }> {
+		const names = new Set<string>();
+		for (const targets of Object.values(this.app.metadataCache.unresolvedLinks)) {
+			for (const name of Object.keys(targets)) names.add(name);
+		}
+		return [...names].map((name) => ({ name, folded: fold(name) }));
 	}
 
 	private createHit(text: string): SearchHit {
@@ -636,6 +659,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 	private exitDrilldown(): void {
 		this.drilldown = null;
+		this.backlinkCandidates = null;
 		this.modalEl.removeClass("is-drilldown");
 		this.inputEl.placeholder = "Search your vault…";
 		this.setQuery(this.savedQuery);
@@ -724,6 +748,12 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			eState: line !== undefined ? { line } : undefined,
 		});
 	}
+}
+
+interface FoldedCandidate {
+	hit: SearchHit;
+	foldedName: string;
+	foldedPath: string;
 }
 
 interface CachedText {
