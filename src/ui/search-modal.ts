@@ -61,6 +61,8 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	private settingQueryProgrammatically = false;
 	/** hit id + query of what the preview shows/is about to show. */
 	private lastPreviewKey = "";
+	/** Bumped per getSuggestions call — async work of older calls is stale. */
+	private gen = 0;
 	private previewTimer: number | null = null;
 
 	private readonly modHeld = (event: KeyboardEvent) => {
@@ -220,6 +222,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	// ------------------------------------------------------- suggestions
 
 	async getSuggestions(query: string): Promise<SearchHit[]> {
+		const gen = ++this.gen;
 		if (this.drilldown) {
 			return this.finish(this.backlinkHits(this.drilldown, query), []);
 		}
@@ -242,7 +245,9 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		hits = this.applyFilters(hits, parsed);
 		let ranked = rankResults(hits, parsed.text, this.filterState.sort);
 		if (parsed.phrases.length > 0) {
-			ranked = await this.filterByPhrases(ranked, parsed.phrases);
+			ranked = await this.filterByPhrases(ranked, parsed.phrases, gen);
+			// A newer keystroke superseded this run: keep the newest results.
+			if (gen !== this.gen) return this.currentHits;
 		}
 		let limited = ranked.slice(0, this.host.settings().resultLimit);
 		limited = [...limited, ...this.ghostHits(parsed, limited)];
@@ -378,9 +383,14 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	}
 
 	/** Verify quoted phrases verbatim — lazily reading bodies of candidates. */
-	private async filterByPhrases(hits: SearchHit[], phrases: string[]): Promise<SearchHit[]> {
+	private async filterByPhrases(
+		hits: SearchHit[],
+		phrases: string[],
+		gen: number,
+	): Promise<SearchHit[]> {
 		const kept: SearchHit[] = [];
 		for (const hit of hits.slice(0, PHRASE_CANDIDATE_LIMIT)) {
+			if (gen !== this.gen) return kept;
 			const haystacks = [hit.basename, hit.url ?? ""];
 			if (hit.kind === "note") {
 				const file = this.app.vault.getFileByPath(hit.path);
@@ -416,7 +426,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 				secondaryEl.setText(hit.url ?? "");
 			} else {
 				secondaryEl.setText(parentFolder(hit.path));
-				if (hit.kind === "note") void this.renderNoteSnippet(hit, secondaryEl);
+				if (hit.kind === "note") void this.renderNoteSnippet(hit, secondaryEl, this.gen);
 			}
 		}
 
@@ -430,11 +440,15 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	}
 
 	/** Bodies are not stored in the index — read lazily per rendered row. */
-	private async renderNoteSnippet(hit: SearchHit, el: HTMLElement): Promise<void> {
-		if (this.currentWords.length === 0) return;
+	private async renderNoteSnippet(hit: SearchHit, el: HTMLElement, gen: number): Promise<void> {
+		const words = this.currentWords;
+		if (words.length === 0) return;
 		const file = this.app.vault.getFileByPath(hit.path);
 		if (!file) return;
-		const snippet = buildSnippet(await this.app.vault.cachedRead(file), this.currentWords);
+		const body = await this.app.vault.cachedRead(file);
+		// The row was replaced by a newer search while reading — drop it.
+		if (gen !== this.gen || !el.isConnected) return;
+		const snippet = buildSnippet(body, words);
 		if (snippet.text.length === 0 || snippet.ranges.length === 0) return;
 		el.empty();
 		el.addClass("searchosaurus-result-snippet");
