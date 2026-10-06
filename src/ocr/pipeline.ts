@@ -212,6 +212,8 @@ export class OcrPipeline {
 		this.queue.push(
 			file.path,
 			async () => {
+				// OCR may have been switched off while this job waited.
+				if (!this.getSettings().ocrEnabled) return;
 				if (!(await this.assetsReady()) || !this.isCurrent(file)) return;
 				const version = { mtime: file.stat.mtime, size: file.stat.size };
 				const url = this.app.vault.getResourcePath(file);
