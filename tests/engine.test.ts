@@ -116,6 +116,24 @@ describe("SearchEngine", () => {
 		expect(restored.search("mira")).toHaveLength(2);
 	});
 
+	it("keeps short words strict but tolerates typos in longer ones", () => {
+		const engine = makeEngine();
+		engine.upsert(doc({ id: "text.md", basename: "text" }));
+		engine.upsert(doc({ id: "kalender.md", basename: "Kalender" }));
+		// 4 letters: no fuzzy — "test" must not match "text"
+		expect(engine.search("test")).toHaveLength(0);
+		// 8 letters: one typo is fine
+		expect(engine.search("kalnder")[0]?.id).toBe("kalender.md");
+	});
+
+	it("caps fuzzy edits at two even for long words", () => {
+		const engine = makeEngine();
+		engine.upsert(doc({ id: "a.md", basename: "Projektplanung" }));
+		// 14 letters × 0.2 would allow 3 edits; the cap keeps it at 2
+		expect(engine.search("prujektplenong")).toHaveLength(0);
+		expect(engine.search("projektplenong")[0]?.id).toBe("a.md");
+	});
+
 	it("returns [] for empty queries", () => {
 		const engine = makeEngine();
 		engine.upsert(doc({ id: "a.md", basename: "a" }));

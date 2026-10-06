@@ -26,6 +26,11 @@ const STORE_FIELDS = [
 	"line",
 ] as const;
 
+const MIN_PREFIX_LENGTH = 2;
+const MIN_FUZZY_LENGTH = 5;
+const FUZZINESS = 0.2;
+const MAX_FUZZY_EDITS = 2;
+
 /** Title-focused subset used by the n/f/i/l prefix operators. */
 export const TITLE_FIELDS: readonly string[] = ["basename", "aliases", "url"];
 
@@ -36,8 +41,14 @@ function miniSearchOptions(weights: FieldWeights): Options<IndexedDoc> {
 		storeFields: [...STORE_FIELDS],
 		processTerm,
 		searchOptions: {
-			prefix: (term) => term.length >= 2,
-			fuzzy: (term) => (term.length >= 4 ? 0.2 : false),
+			// Prefix on every word (not just the last): "mi ho" → "Mira Holt"
+			// is a documented feature and needs prefix on the first word too.
+			prefix: (term) => term.length >= MIN_PREFIX_LENGTH,
+			// Fuzzy only for longer words, at most 2 edits: 4-letter words
+			// with one typo matched half the vocabulary (test→text/rest/best),
+			// long words got up to 4+ edits.
+			fuzzy: (term) => (term.length >= MIN_FUZZY_LENGTH ? FUZZINESS : false),
+			maxFuzzy: MAX_FUZZY_EDITS,
 			combineWith: "AND",
 			boost: { ...weights },
 		},
