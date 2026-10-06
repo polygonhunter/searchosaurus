@@ -124,3 +124,17 @@ export function matchesTag(tagList: readonly string[], foldedQueryTag: string): 
 		return foldedTag === foldedQueryTag || foldedTag.startsWith(`${foldedQueryTag} `);
 	});
 }
+
+/** Longest editor selection that is taken over as the initial query. */
+const MAX_SELECTION_QUERY = 100;
+
+/**
+ * Editor selection → initial search text: only a short, single-line
+ * selection counts (a selected paragraph is not a search intent).
+ */
+export function queryFromSelection(selection: string | null | undefined): string | null {
+	const trimmed = (selection ?? "").trim();
+	if (trimmed.length === 0 || trimmed.length > MAX_SELECTION_QUERY) return null;
+	if (/[\r\n]/.test(trimmed)) return null;
+	return trimmed;
+}

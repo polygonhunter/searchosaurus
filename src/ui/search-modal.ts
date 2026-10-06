@@ -115,6 +115,8 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	constructor(
 		app: App,
 		private readonly host: ModalHost,
+		/** Pre-filled query (editor selection, obsidian:// URI). */
+		private readonly initialQuery?: string,
 	) {
 		super(app);
 		this.modalEl.addClass("searchosaurus-modal");
@@ -187,7 +189,13 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		window.setTimeout(() => this.modalEl.removeClass("is-entering"), ENTER_DURATION_MS);
 		activeWindow.addEventListener("keydown", this.modHeld);
 		activeWindow.addEventListener("keyup", this.modHeld);
-		this.refresh(); // populate the empty-state launcher immediately
+		if (this.initialQuery) {
+			// Pre-filled and selected: Enter searches it, typing replaces it.
+			this.setQuery(this.initialQuery);
+			this.inputEl.select();
+		} else {
+			this.refresh(); // populate the empty-state launcher immediately
+		}
 	}
 
 	onClose(): void {

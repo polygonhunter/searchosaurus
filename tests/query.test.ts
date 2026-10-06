@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsPhrase, matchesTag, parseQuery } from "../src/core/query";
+import { containsPhrase, matchesTag, parseQuery, queryFromSelection } from "../src/core/query";
 
 describe("parseQuery — kind operators", () => {
 	it("parses n/f/i/l prefixes", () => {
@@ -103,5 +103,18 @@ describe("matchesTag", () => {
 		expect(matchesTag(["project"], "project")).toBe(true);
 		expect(matchesTag(["project/design"], "project")).toBe(true);
 		expect(matchesTag(["projection"], "project")).toBe(false);
+	});
+});
+
+describe("queryFromSelection", () => {
+	it("takes short single-line selections, trimmed", () => {
+		expect(queryFromSelection("  Mira Holt ")).toBe("Mira Holt");
+	});
+
+	it("ignores empty, multi-line and long selections", () => {
+		expect(queryFromSelection("")).toBeNull();
+		expect(queryFromSelection(null)).toBeNull();
+		expect(queryFromSelection("a\nb")).toBeNull();
+		expect(queryFromSelection("x".repeat(101))).toBeNull();
 	});
 });

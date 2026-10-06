@@ -1,6 +1,7 @@
 import { debounce, Notice, Platform, Plugin } from "obsidian";
 import { coversData, mergePersistentData } from "./core/merge-data";
 import { diffSettings, snapshotSettings } from "./core/settings-diff";
+import { queryFromSelection } from "./core/query";
 import { SearchEngine } from "./core/engine";
 import { bumpFrecency, pruneFrecency, renameFrecency } from "./core/frecency";
 import { DEFAULT_WEIGHTS } from "./core/types";
@@ -52,7 +53,7 @@ export default class SearchosaurusPlugin extends Plugin {
 			(path) => this.pipeline?.forget(path),
 		);
 
-		const openSearch = () => {
+		const openSearch = (initialQuery?: string) => {
 			// Deferred: command pickers and the mobile Quick Action overlay
 			// dismiss themselves right after invoking a command and would
 			// sweep a synchronously opened modal away with them. Mobile
@@ -65,7 +66,7 @@ export default class SearchosaurusPlugin extends Plugin {
 						data: this.data,
 						saveDataSoon: () => this.saveDataSoon(),
 						isIndexing: () => this.indexer?.indexing ?? false,
-					}).open();
+					}, initialQuery).open();
 				} catch (error) {
 					console.error("Searchosaurus: failed to open search", error);
 					new Notice(
@@ -78,11 +79,20 @@ export default class SearchosaurusPlugin extends Plugin {
 		this.addCommand({
 			id: "open-search",
 			name: "Open search",
-			callback: openSearch,
+			// A short selection in the editor becomes the starting query —
+			// read now, before focus moves to the modal.
+			callback: () => {
+				const selection = this.app.workspace.activeEditor?.editor?.getSelection();
+				openSearch(queryFromSelection(selection) ?? undefined);
+			},
 		});
 		// Tappable entry point — on mobile this lands in the side menu, so
 		// the search is reachable without configuring anything.
-		this.addRibbonIcon("search", "Searchosaurus: Open search", openSearch);
+		this.addRibbonIcon("search", "Searchosaurus: Open search", () => openSearch());
+		// obsidian://searchosaurus?query=… — for launchers, scripts, links.
+		this.registerObsidianProtocolHandler("searchosaurus", (params) => {
+			openSearch(typeof params.query === "string" ? params.query : undefined);
+		});
 
 		this.addSettingTab(new SearchosaurusSettingTab(this.app, this));
 
