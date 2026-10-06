@@ -1,4 +1,5 @@
 import { debounce, Notice, Platform, Plugin } from "obsidian";
+import { diffSettings, snapshotSettings } from "./core/settings-diff";
 import { SearchEngine } from "./core/engine";
 import { bumpFrecency, pruneFrecency, renameFrecency } from "./core/frecency";
 import { DEFAULT_WEIGHTS } from "./core/types";
@@ -26,6 +27,10 @@ export default class SearchosaurusPlugin extends Plugin {
 	private engine: SearchEngine = new SearchEngine(DEFAULT_WEIGHTS);
 	private indexer: Indexer | null = null;
 	private pipeline: OcrPipeline | null = null;
+	/** Settings as last applied — onSettingsChanged diffs against this. */
+	private appliedSettings: SearchosaurusSettings = { ...DEFAULT_SETTINGS };
+	/** One shared in-flight asset download, however often OCR is toggled. */
+	private assetsPromise: Promise<boolean> | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -113,23 +118,43 @@ export default class SearchosaurusPlugin extends Plugin {
 		// Flush pending writes first — a debounced save cancelled on unload
 		// would silently lose the last opens/pins and index changes.
 		this.saveDataSoon.run();
+		this.reconcileSoon.cancel();
 		this.indexer?.stop();
 		this.indexer = null;
 		void this.pipeline?.destroy();
 		this.pipeline = null;
 	}
 
-	/** Called by the settings tab after any change. */
+	/**
+	 * Called by the settings tab after any change. Only does the work the
+	 * actual change requires — a slider tick must not re-scan the vault.
+	 */
 	onSettingsChanged(): void {
-		if (this.settings.ocrEnabled && Platform.isDesktop) {
+		const change = diffSettings(this.appliedSettings, this.settings);
+		this.appliedSettings = snapshotSettings(this.settings);
+
+		if (change.exclusions) this.reconcileSoon();
+		if (change.ocrStopped) void this.pipeline?.stopOcr();
+		if (change.pdfStopped) this.pipeline?.stopPdf();
+		if (change.ocrStarted && Platform.isDesktop) {
 			// One-time asset download, then sweep existing images/PDFs.
-			void ensureAssets(this.app, this.manifest.dir ?? "").then((ok) => {
-				if (ok) this.pipeline?.scanVault();
+			void this.ensureAssetsOnce().then((ok) => {
+				if ((ok && this.settings.ocrEnabled) || change.pdfStarted) this.pipeline?.scanVault();
 			});
-		} else if (this.settings.indexPdfText) {
+		} else if (change.pdfStarted) {
 			this.pipeline?.scanVault();
 		}
 	}
+
+	private ensureAssetsOnce(): Promise<boolean> {
+		this.assetsPromise ??= ensureAssets(this.app, this.manifest.dir ?? "").finally(() => {
+			this.assetsPromise = null;
+		});
+		return this.assetsPromise;
+	}
+
+	/** Folder fields fire per keystroke — reconcile once typing settles. */
+	private readonly reconcileSoon = debounce(() => this.indexer?.reconcile(), 500, true);
 
 	async rebuildIndex(): Promise<void> {
 		await this.indexer?.rebuild();
@@ -140,6 +165,7 @@ export default class SearchosaurusPlugin extends Plugin {
 		const raw = (await this.loadData()) as Partial<StoredShape> | null;
 		this.settings = { ...DEFAULT_SETTINGS, ...(raw?.settings ?? {}) };
 		this.data = { ...structuredClone(DEFAULT_DATA), ...(raw?.data ?? {}) };
+		this.appliedSettings = snapshotSettings(this.settings);
 	}
 
 	async saveSettings(): Promise<void> {

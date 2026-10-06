@@ -88,4 +88,22 @@ describe("OcrQueue", () => {
 		await tick();
 		expect(order).toEqual(["bad", "good"]);
 	});
+
+	it("dropWhere removes only matching queued jobs", async () => {
+		let release: () => void = () => undefined;
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		const queue = new OcrQueue(sync);
+		const order: string[] = [];
+		queue.push("blocker.png", async () => gate);
+		queue.push("a.png", async () => void order.push("a.png"));
+		queue.push("b.pdf", async () => void order.push("b.pdf"), "high");
+		queue.dropWhere((key) => key.endsWith(".png"));
+		release();
+		await tick();
+		expect(order).toEqual(["b.pdf"]);
+		// a dropped key can be queued again
+		queue.push("a.png", async () => void order.push("a.png"));
+		await tick();
+		expect(order).toEqual(["b.pdf", "a.png"]);
+	});
 });

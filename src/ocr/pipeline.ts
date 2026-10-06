@@ -11,6 +11,11 @@ import { OcrCache } from "./ocr-cache";
 // desktop-only and was a mobile load-failure suspect. Loaded lazily below.
 import type { OcrService } from "./ocr-service";
 
+function kindForPath(path: string): ReturnType<typeof kindForExtension> {
+	const dot = path.lastIndexOf(".");
+	return kindForExtension(dot === -1 ? "" : path.slice(dot + 1));
+}
+
 /** Hard cap per file — extracted text is a low-weight helper field. */
 const MAX_EXTRACTED_CHARS = 20_000;
 const MAX_PDF_PAGES = 100;
@@ -78,6 +83,19 @@ export class OcrPipeline {
 	/** The path left the index (excluded/deleted): drop its pending job. */
 	forget(path: string): void {
 		this.queue.drop(path);
+	}
+
+	/** OCR switched off: drop queued image jobs and stop the worker. */
+	async stopOcr(): Promise<void> {
+		this.queue.dropWhere((path) => kindForPath(path) === "image");
+		const service = this.service;
+		this.service = null;
+		await service?.destroy();
+	}
+
+	/** PDF extraction switched off: drop queued PDF jobs. */
+	stopPdf(): void {
+		this.queue.dropWhere((path) => path.toLowerCase().endsWith(".pdf"));
 	}
 
 	/** Enqueue every eligible attachment (used when OCR gets switched on). */

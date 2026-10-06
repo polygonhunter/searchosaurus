@@ -45,6 +45,19 @@ export class OcrQueue {
 		}
 	}
 
+	/** Drop every queued (not in-flight) job whose key matches. */
+	dropWhere(predicate: (key: string) => boolean): void {
+		for (const list of [this.high, this.low]) {
+			for (let i = list.length - 1; i >= 0; i--) {
+				const job = list[i];
+				if (job && predicate(job.key)) {
+					list.splice(i, 1);
+					this.keys.delete(job.key);
+				}
+			}
+		}
+	}
+
 	pause(): void {
 		this.paused = true;
 	}
