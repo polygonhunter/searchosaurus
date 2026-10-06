@@ -4,7 +4,7 @@ import { TITLE_FIELDS } from "../core/engine";
 import { topFrecent } from "../core/frecency";
 import { pushHistory } from "../core/history";
 import { fold, foldedWords } from "../core/normalize";
-import { containsPhrase, matchesTag, parseQuery, type ParsedQuery } from "../core/query";
+import { matchesTag, parseQuery, type ParsedQuery } from "../core/query";
 import { rankResults } from "../core/rank";
 import {
 	findFirstMatch,
@@ -26,6 +26,8 @@ import { PreviewPane } from "./preview";
 
 /** How many candidates the phrase filter may lazily read from disk. */
 const PHRASE_CANDIDATE_LIMIT = 200;
+/** Candidates read in parallel per phrase-filter step. */
+const PHRASE_BATCH = 20;
 /** How long the entrance stagger class stays on (first paint only). */
 const ENTER_DURATION_MS = 450;
 /** Empty-state launcher size (pins + frecent). */
@@ -418,25 +420,43 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		});
 	}
 
-	/** Verify quoted phrases verbatim — lazily reading bodies of candidates. */
+	/**
+	 * Verify quoted phrases verbatim — lazily reading bodies of candidates,
+	 * in parallel batches, stopping once enough results are confirmed or a
+	 * newer keystroke made this run stale.
+	 */
 	private async filterByPhrases(
 		hits: SearchHit[],
 		phrases: string[],
 		gen: number,
 	): Promise<SearchHit[]> {
+		const folded = phrases.map(fold).filter((p) => p.length > 0);
+		if (folded.length === 0) return hits;
+		const limit = this.host.settings().resultLimit;
+		const candidates = hits.slice(0, PHRASE_CANDIDATE_LIMIT);
 		const kept: SearchHit[] = [];
-		for (const hit of hits.slice(0, PHRASE_CANDIDATE_LIMIT)) {
+		for (let i = 0; i < candidates.length && kept.length < limit; i += PHRASE_BATCH) {
+			const batch = candidates.slice(i, i + PHRASE_BATCH);
+			const verdicts = await Promise.all(batch.map((hit) => this.matchesPhrases(hit, folded)));
 			if (gen !== this.gen) return kept;
-			const haystacks = [hit.basename, hit.url ?? ""];
-			if (hit.kind === "note") {
-				const file = this.app.vault.getFileByPath(hit.path);
-				if (file) haystacks.push(await this.app.vault.cachedRead(file));
-			}
-			if (phrases.every((p) => haystacks.some((h) => containsPhrase(h, p)))) {
-				kept.push(hit);
-			}
+			batch.forEach((hit, k) => {
+				if (verdicts[k] && kept.length < limit) kept.push(hit);
+			});
 		}
 		return kept;
+	}
+
+	/** Every (pre-folded) phrase occurs in the title, URL or note body. */
+	private async matchesPhrases(hit: SearchHit, foldedPhrases: readonly string[]): Promise<boolean> {
+		const haystacks = [fold(hit.basename), fold(hit.url ?? "")];
+		const missing = () => foldedPhrases.filter((p) => !haystacks.some((h) => h.includes(p)));
+		if (missing().length === 0) return true;
+		if (hit.kind !== "note") return false;
+		const text = await this.cachedText(hit.path);
+		if (!text) return false;
+		text.phraseHaystack ??= fold(text.body);
+		haystacks.push(text.phraseHaystack);
+		return missing().length === 0;
 	}
 
 	// --------------------------------------------------------- rendering
