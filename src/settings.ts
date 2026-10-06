@@ -156,7 +156,7 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 			.setDesc(
 				Platform.isDesktop
 					? "Runs fully offline. Enabling downloads the recognition models (~8 MB) once from the plugin's GitHub release; images are then processed in the background and cached."
-					: "OCR runs on desktop only. Results synced from a desktop device are still searchable here.",
+					: "OCR runs on desktop only. Text recognized on a desktop is searchable here too if the plugin folder (ocr-cache.json) syncs along.",
 			)
 			.addToggle((toggle) =>
 				toggle
