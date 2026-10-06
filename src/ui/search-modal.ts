@@ -276,10 +276,16 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			return this.finish(this.launcherHits(), []);
 		}
 
-		// Typed operators search title-focused; otherwise all fields.
-		const options = parsed.kind !== null ? { fields: [...TITLE_FIELDS] } : undefined;
-		// Tag-only queries ("#project") search the tags field itself.
-		const engineQuery = parsed.text.length > 0 ? parsed.text : parsed.tags.join(" ");
+		const tagOnly = parsed.text.length === 0;
+		// Tag-only queries ("#project", also "n #project") search the tags
+		// field itself, literally; typed operators otherwise search
+		// title-focused; plain queries all fields.
+		const options = tagOnly
+			? { fields: ["tags"], fuzzy: false }
+			: parsed.kind !== null
+				? { fields: [...TITLE_FIELDS] }
+				: undefined;
+		const engineQuery = tagOnly ? parsed.tags.join(" ") : parsed.text;
 		let hits = this.host.engine.searchWithExcludes(engineQuery, parsed.excludes, options);
 
 		hits = this.applyFilters(hits, parsed);
