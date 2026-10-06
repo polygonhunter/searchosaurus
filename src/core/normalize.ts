@@ -26,8 +26,17 @@ export function fold(text: string): string {
 		.trim();
 }
 
-/** processTerm for MiniSearch: folded term, or null to drop the term. */
+/** Already-folded shape: nothing for fold() to do after lowercasing. */
+const PLAIN_TERM_RE = /^[a-z0-9]+$/;
+
+/**
+ * processTerm for MiniSearch: folded term, or null to drop the term. Runs
+ * for every token of every indexed note — plain ASCII words (the vast
+ * majority) skip the NFD/regex pipeline.
+ */
 export function processTerm(term: string): string | null {
+	const lower = term.toLowerCase();
+	if (PLAIN_TERM_RE.test(lower)) return lower;
 	const folded = fold(term);
 	return folded.length > 0 ? folded : null;
 }

@@ -45,3 +45,12 @@ describe("foldedWords", () => {
 		expect(foldedWords(" … ")).toEqual([]);
 	});
 });
+
+describe("processTerm fast path", () => {
+	it("agrees with fold() for plain and non-plain terms", () => {
+		for (const term of ["Hello", "abc123", "Müller", "Straße", "café", "C++", "---", "ÄÖÜ", "x"]) {
+			const folded = fold(term);
+			expect(processTerm(term)).toBe(folded.length > 0 ? folded : null);
+		}
+	});
+});

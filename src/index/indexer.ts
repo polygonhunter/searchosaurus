@@ -6,8 +6,8 @@ import { extractDocs } from "./content";
 import { IndexPersistence } from "./persistence";
 import type { FieldWeights } from "../core/types";
 
-/** Files (re)indexed per chunk before yielding back to the UI thread. */
-const CHUNK_SIZE = 20;
+/** Main-thread time budget per indexing slice before yielding to the UI. */
+const SLICE_BUDGET_MS = 8;
 /** Snapshot after this much quiet… */
 const SAVE_DEBOUNCE_MS = 60_000;
 /** …but never let changes sit unsaved longer than this. */
@@ -220,7 +220,7 @@ export class Indexer {
 		if (this.processing) return;
 		this.processing = true;
 		try {
-			let sinceYield = 0;
+			let sliceStart = performance.now();
 			let sinceCheckpoint = 0;
 			while (this.queue.length > 0 && !this.stopped) {
 				const path = this.queue.shift();
@@ -231,9 +231,11 @@ export class Indexer {
 					sinceCheckpoint = 0;
 					this.flush();
 				}
-				if (++sinceYield >= CHUNK_SIZE) {
-					sinceYield = 0;
+				// Yield by time, not file count: 20 huge notes could block for
+				// 100+ ms, 20 tiny ones yielded needlessly often.
+				if (performance.now() - sliceStart >= SLICE_BUDGET_MS) {
 					await new Promise((resolve) => window.setTimeout(resolve, 0));
+					sliceStart = performance.now();
 				}
 			}
 		} finally {
