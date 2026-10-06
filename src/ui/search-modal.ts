@@ -325,7 +325,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	async getSuggestions(query: string): Promise<SearchHit[]> {
 		const gen = ++this.gen;
 		if (this.drilldown) {
-			this.emptyStateText = "Nothing links here yet.";
+			this.emptyStateText = query.trim().length > 0 ? "No matches." : "Nothing links here yet.";
 			return this.finish(this.backlinkHits(this.drilldown, query), []);
 		}
 
