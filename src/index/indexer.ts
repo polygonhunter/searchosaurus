@@ -84,9 +84,7 @@ export class Indexer {
 		/** A path left the index (deleted/excluded): drop pending extraction. */
 		private readonly onForget?: (path: string) => void,
 	) {
-		// appId is undocumented but stable — used to key the per-vault cache.
-		const appId = (app as unknown as { appId?: string }).appId ?? "default";
-		this.persistence = new IndexPersistence(appId);
+		this.persistence = new IndexPersistence(cacheId(app));
 	}
 
 	/** Load cache, diff against the vault, wire events. Call onLayoutReady. */
@@ -154,6 +152,9 @@ export class Indexer {
 		this.stopped = true;
 		this.saveDebounced.cancel();
 		this.flush();
+		// Closes once the flush (if any) is through — keeps hot reloads from
+		// piling up open IndexedDB connections.
+		this.persistence.close();
 	}
 
 	/** Wipe everything and re-index from scratch (settings escape hatch). */
@@ -361,5 +362,28 @@ export class Indexer {
 			Object.fromEntries(this.linkDocs),
 			Object.fromEntries(this.extracted),
 		);
+	}
+}
+
+const CACHE_ID_KEY = "searchosaurus-cache-id";
+
+/**
+ * Per-vault key for the IndexedDB cache. Stored via the documented
+ * vault-scoped localStorage (since 1.8.7); the first value is seeded from
+ * the undocumented appId, so caches of existing installs stay valid.
+ */
+function cacheId(app: App): string {
+	try {
+		const stored: unknown = app.loadLocalStorage(CACHE_ID_KEY);
+		if (typeof stored === "string" && stored.length > 0) return stored;
+		const appId = (app as unknown as { appId?: string }).appId;
+		const id =
+			appId && appId.length > 0
+				? appId
+				: `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+		app.saveLocalStorage(CACHE_ID_KEY, id);
+		return id;
+	} catch {
+		return (app as unknown as { appId?: string }).appId ?? "default";
 	}
 }

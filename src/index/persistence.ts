@@ -101,6 +101,16 @@ export class IndexPersistence {
 		}
 	}
 
+	/**
+	 * Close the connection after pending requests. IndexedDB lets queued
+	 * transactions finish before closing, so a just-started save survives.
+	 */
+	close(): void {
+		const pending = this.dbPromise;
+		this.dbPromise = null;
+		void pending?.then((db) => db.close()).catch(() => undefined);
+	}
+
 	async clear(): Promise<void> {
 		try {
 			const db = await this.open();
