@@ -34,7 +34,8 @@ export class OcrPipeline {
 		private readonly engine: SearchEngine,
 		private readonly getSettings: () => SearchosaurusSettings,
 		private readonly manifestDir: string,
-		private readonly persistSoon: () => void,
+		/** Extracted text for this file version landed in the index. */
+		private readonly onApplied: (path: string, mtime: number) => void,
 	) {
 		this.cache = new OcrCache(app, manifestDir);
 	}
@@ -192,7 +193,7 @@ export class OcrPipeline {
 	/** Push extracted text into the index and schedule persistence. */
 	private apply(file: TFile, text: string): void {
 		this.engine.upsert(attachmentDoc(file, text.slice(0, MAX_EXTRACTED_CHARS)));
-		this.persistSoon();
+		this.onApplied(file.path, file.stat.mtime);
 	}
 
 	private async assetsReady(): Promise<boolean> {

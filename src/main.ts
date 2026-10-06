@@ -35,7 +35,7 @@ export default class SearchosaurusPlugin extends Plugin {
 			this.engine,
 			() => this.settings,
 			this.manifest.dir ?? "",
-			() => this.indexer?.persistSoon(),
+			(path, mtime) => this.indexer?.markExtracted(path, mtime),
 		);
 		this.indexer = new Indexer(
 			this.app,
@@ -103,6 +103,7 @@ export default class SearchosaurusPlugin extends Plugin {
 			void (async () => {
 				await this.pipeline?.init(this);
 				await this.indexer?.start(this);
+				this.indexer?.healAttachments();
 			})();
 		});
 	}

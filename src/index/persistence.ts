@@ -10,6 +10,11 @@ export interface PersistedIndex {
 	files: Record<string, number>;
 	/** notePath → ids of its link docs; needed to discard them on change. */
 	links: Record<string, string[]>;
+	/**
+	 * attachmentPath → mtime whose OCR/PDF text is in the index. Optional:
+	 * snapshots from older versions lack it (→ one-time self-heal).
+	 */
+	extracted?: Record<string, number>;
 }
 
 const STORE = "kv";
@@ -76,6 +81,7 @@ export class IndexPersistence {
 		indexJson: string,
 		files: Record<string, number>,
 		links: Record<string, string[]>,
+		extracted: Record<string, number> = {},
 	): Promise<void> {
 		try {
 			const payload: PersistedIndex = {
@@ -84,6 +90,7 @@ export class IndexPersistence {
 				indexJson,
 				files,
 				links,
+				extracted,
 			};
 			const db = await this.open();
 			await asPromise(

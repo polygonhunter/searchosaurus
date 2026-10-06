@@ -20,6 +20,8 @@ export class Indexer {
 	private readonly indexedFiles = new Map<string, number>();
 	/** notePath → ids of its link docs (discarded when the note changes). */
 	private readonly linkDocs = new Map<string, string[]>();
+	/** attachmentPath → mtime whose extracted text is in the index. */
+	private readonly extracted = new Map<string, number>();
 	private readonly queue: string[] = [];
 	private readonly queued = new Set<string>();
 	private processing = false;
@@ -59,14 +61,41 @@ export class Indexer {
 				for (const [path, ids] of Object.entries(persisted.links)) {
 					this.linkDocs.set(path, ids);
 				}
+				for (const [path, mtime] of Object.entries(persisted.extracted ?? {})) {
+					this.extracted.set(path, mtime);
+				}
 			} catch {
 				this.engine.clear();
 				this.indexedFiles.clear();
 				this.linkDocs.clear();
+				this.extracted.clear();
 			}
 		}
 		this.registerEvents(plugin);
 		this.diffVault();
+	}
+
+	/**
+	 * Self-heal: unchanged attachments whose OCR/PDF text never made it into
+	 * the snapshot (e.g. restart mid initial build) are offered to the
+	 * pipeline again — a cache hit is a cheap apply, a miss a low-prio job.
+	 * Call once the pipeline has loaded its cache.
+	 */
+	healAttachments(): void {
+		if (this.stopped) return;
+		for (const file of this.app.vault.getFiles()) {
+			if (file.extension === "md" || this.queued.has(file.path)) continue;
+			const indexedMtime = this.indexedFiles.get(file.path);
+			if (indexedMtime !== file.stat.mtime) continue; // queued/re-indexed anyway
+			if (this.extracted.get(file.path) === file.stat.mtime) continue;
+			this.onAttachment?.(file, "low");
+		}
+	}
+
+	/** The pipeline put extracted text for this file version into the index. */
+	markExtracted(path: string, mtime: number): void {
+		this.extracted.set(path, mtime);
+		this.saveSoon();
 	}
 
 	/** Stop processing and flush a pending snapshot instead of dropping it. */
@@ -82,6 +111,7 @@ export class Indexer {
 		this.engine.clear();
 		this.indexedFiles.clear();
 		this.linkDocs.clear();
+		this.extracted.clear();
 		await this.persistence.clear();
 		this.diffVault();
 	}
@@ -149,6 +179,7 @@ export class Indexer {
 		for (const id of this.linkDocs.get(path) ?? []) this.engine.remove(id);
 		this.linkDocs.delete(path);
 		this.indexedFiles.delete(path);
+		this.extracted.delete(path);
 		this.queued.delete(path);
 		this.saveSoon();
 	}
@@ -175,11 +206,6 @@ export class Indexer {
 		if (!this.stopped) this.saveSoon();
 	}
 
-	/** Let collaborators (OCR pipeline) schedule an index snapshot. */
-	persistSoon(): void {
-		this.saveSoon();
-	}
-
 	private async indexPath(path: string): Promise<void> {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
@@ -198,6 +224,8 @@ export class Indexer {
 			this.linkDocs.set(file.path, [...newLinkIds]);
 			this.indexedFiles.set(file.path, file.stat.mtime);
 			if (docs[0] && docs[0].kind !== "note") {
+				// The doc was just replaced without text; the pipeline re-applies.
+				this.extracted.delete(file.path);
 				this.onAttachment?.(file, this.initialBuildDone ? "high" : "low");
 			}
 		} catch (error) {
@@ -213,6 +241,7 @@ export class Indexer {
 				this.engine.toJSON(),
 				Object.fromEntries(this.indexedFiles),
 				Object.fromEntries(this.linkDocs),
+				Object.fromEntries(this.extracted),
 			);
 		},
 		10_000,
