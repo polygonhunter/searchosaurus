@@ -322,8 +322,14 @@ export class OcrPipeline {
 			}
 			return parts.join("\n").trim();
 		} catch (error) {
-			// Encrypted PDFs fail the same way every time — cache as empty.
-			if (error instanceof Error && error.name === "PasswordException") return "";
+			// Encrypted or corrupt PDFs fail the same way every time — cache
+			// as empty instead of re-reading them (up to 50 MB) on every start.
+			if (
+				error instanceof Error &&
+				(error.name === "PasswordException" || error.name === "InvalidPDFException")
+			) {
+				return "";
+			}
 			return null;
 		} finally {
 			// Frees the pdf.js worker-side document (memory leak otherwise).

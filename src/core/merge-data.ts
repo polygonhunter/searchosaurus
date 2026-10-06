@@ -11,15 +11,14 @@ export interface MergeableData {
 /**
  * Merge the synced data.json (remote) into this device's state (local)
  * without losing either side's recent work (pure, unit-tested):
- *   - pins: union, local order first, remote additions appended
+ *   - pins: follow the file. Pins change only by an explicit pin/unpin,
+ *     which is saved right away — a union would make every unpin bounce
+ *     back from any other running device (it writes its pin back).
  *   - frecency: per path the higher count and the later last-open
  *   - search history: local first, remote entries appended, bounded
- * Trade-off: an unpin on one device can be undone by a union with a device
- * that still has the pin — losing a pin silently is the worse failure.
  */
 export function mergePersistentData(local: MergeableData, remote: MergeableData): MergeableData {
-	const pins = [...local.pins];
-	for (const pin of remote.pins) if (!pins.includes(pin)) pins.push(pin);
+	const pins = [...remote.pins];
 
 	const frecency: Record<string, FrecencyEntry> = {};
 	for (const source of [local.frecency, remote.frecency]) {

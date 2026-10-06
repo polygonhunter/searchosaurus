@@ -8,7 +8,7 @@
 
 /** Combining marks left after NFD decomposition (é → e + ´). */
 const COMBINING_MARK_RE = /[̀-ͯ]/g;
-// eslint-disable-next-line no-control-regex
+// eslint-disable-next-line no-control-regex -- ASCII range check, \x00 is intended
 const ASCII_RE = /^[\x00-\x7f]*$/;
 
 /** Needles shorter than this are ignored (they match everywhere). */

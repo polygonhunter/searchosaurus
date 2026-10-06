@@ -2,12 +2,18 @@ import { describe, expect, it } from "vitest";
 import { coversData, mergePersistentData } from "../src/core/merge-data";
 
 describe("mergePersistentData", () => {
-	it("unions pins, local order first", () => {
+	it("takes pins from the file, so an unpin elsewhere sticks", () => {
 		const merged = mergePersistentData(
 			{ pins: ["a", "b"], searchHistory: [], frecency: {} },
 			{ pins: ["c", "a"], searchHistory: [], frecency: {} },
 		);
-		expect(merged.pins).toEqual(["a", "b", "c"]);
+		expect(merged.pins).toEqual(["c", "a"]);
+	});
+
+	it("does not write an unpinned path back (no ping-pong)", () => {
+		const remote = { pins: ["b"], searchHistory: [], frecency: {} };
+		const merged = mergePersistentData({ pins: ["a", "b"], searchHistory: [], frecency: {} }, remote);
+		expect(coversData(remote, merged)).toBe(true);
 	});
 
 	it("keeps the higher count and later open per path", () => {

@@ -338,6 +338,9 @@ export class Indexer {
 	 */
 	private saveSoon(): void {
 		this.dirty = true;
+		// After stop() the final flush already ran; a timer armed now would
+		// fire after unload and reopen IndexedDB for nothing.
+		if (this.stopped) return;
 		const now = Date.now();
 		this.dirtySince ??= now;
 		if (now - this.dirtySince >= SAVE_MAX_WAIT_MS) {
