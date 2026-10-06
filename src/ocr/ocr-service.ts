@@ -11,6 +11,8 @@ import { assetUrl } from "./assets";
 export class OcrService {
 	private worker: Worker | null = null;
 	private workerLangs = "";
+	/** After terminate(): a worker that finishes booting late is killed. */
+	private destroyed = false;
 
 	constructor(
 		private readonly app: App,
@@ -23,6 +25,12 @@ export class OcrService {
 		return result.data.text.trim();
 	}
 
+	/** Final shutdown: terminate and refuse to spawn new workers. */
+	async destroy(): Promise<void> {
+		this.destroyed = true;
+		await this.terminate();
+	}
+
 	async terminate(): Promise<void> {
 		const worker = this.worker;
 		this.worker = null;
@@ -31,9 +39,10 @@ export class OcrService {
 	}
 
 	private async getWorker(langs: string): Promise<Worker> {
+		if (this.destroyed) throw new Error("Searchosaurus: OCR service destroyed");
 		if (this.worker && this.workerLangs === langs) return this.worker;
 		await this.terminate();
-		this.worker = await createWorker(langs.split("+"), OEM.LSTM_ONLY, {
+		const worker = await createWorker(langs.split("+"), OEM.LSTM_ONLY, {
 			workerPath: assetUrl(this.app, this.manifestDir, "worker.min.js"),
 			corePath: assetUrl(this.app, this.manifestDir, "tesseract-core-simd-lstm.wasm.js"),
 			// tesseract appends `/${lang}.traineddata.gz` itself.
@@ -41,7 +50,13 @@ export class OcrService {
 			gzip: true,
 			cacheMethod: "none", // our own cache; keep IndexedDB out of it
 		});
+		if (this.destroyed) {
+			// Plugin unloaded while the worker was booting — do not leak it.
+			await worker.terminate().catch(() => undefined);
+			throw new Error("Searchosaurus: OCR service destroyed");
+		}
+		this.worker = worker;
 		this.workerLangs = langs;
-		return this.worker;
+		return worker;
 	}
 }

@@ -48,6 +48,8 @@ export class Indexer {
 	/** Load cache, diff against the vault, wire events. Call onLayoutReady. */
 	async start(plugin: Plugin): Promise<void> {
 		const persisted = await this.persistence.load(this.weights);
+		// Unloaded while IndexedDB was loading: do not wire events anymore.
+		if (this.stopped) return;
 		if (persisted) {
 			try {
 				this.engine.load(persisted.indexJson);

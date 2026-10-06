@@ -26,6 +26,8 @@ export class OcrPipeline {
 	private readonly cache: OcrCache;
 	private service: OcrService | null = null;
 	private missingAssetsWarned = false;
+	/** Set by destroy(): late async work must not touch engine/cache. */
+	private destroyed = false;
 
 	constructor(
 		private readonly app: App,
@@ -41,13 +43,15 @@ export class OcrPipeline {
 	private async getService(): Promise<OcrService> {
 		if (!this.service) {
 			const { OcrService: Service } = await import("./ocr-service");
-			this.service = new Service(this.app, this.manifestDir);
+			if (this.destroyed) throw new Error("Searchosaurus: OCR pipeline destroyed");
+			this.service ??= new Service(this.app, this.manifestDir);
 		}
 		return this.service;
 	}
 
 	async init(plugin: Plugin): Promise<void> {
 		await this.cache.load();
+		if (this.destroyed) return;
 		plugin.registerEvent(
 			this.app.vault.on("delete", (file) => {
 				this.cache.remove(file.path);
@@ -63,8 +67,9 @@ export class OcrPipeline {
 	}
 
 	async destroy(): Promise<void> {
+		this.destroyed = true;
 		this.queue.clear();
-		await this.service?.terminate();
+		await this.service?.destroy();
 		this.service = null;
 		await this.cache.save();
 	}
@@ -101,10 +106,11 @@ export class OcrPipeline {
 		this.queue.push(
 			file.path,
 			async () => {
-				if (!(await this.assetsReady())) return;
+				if (!(await this.assetsReady()) || this.destroyed) return;
 				const url = this.app.vault.getResourcePath(file);
 				const service = await this.getService();
 				const text = await service.recognize(url, langs);
+				if (this.destroyed) return;
 				this.cache.set(file.path, {
 					mtime: file.stat.mtime,
 					size: file.stat.size,
@@ -129,6 +135,7 @@ export class OcrPipeline {
 			file.path,
 			async () => {
 				const text = await this.extractPdfText(file);
+				if (this.destroyed) return;
 				this.cache.set(file.path, {
 					mtime: file.stat.mtime,
 					size: file.stat.size,
