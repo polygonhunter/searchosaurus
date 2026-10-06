@@ -106,6 +106,14 @@ export class SearchEngine {
 		this.mini = MiniSearch.loadJSON(json, miniSearchOptions(this.weights));
 	}
 
+	/**
+	 * Async variant: MiniSearch rebuilds the index in chunks and yields in
+	 * between, so a large snapshot no longer freezes startup.
+	 */
+	async loadAsync(json: string): Promise<void> {
+		this.mini = await MiniSearch.loadJSONAsync(json, miniSearchOptions(this.weights));
+	}
+
 	/** Drop everything (rebuild path). */
 	clear(): void {
 		this.mini = new MiniSearch(miniSearchOptions(this.weights));

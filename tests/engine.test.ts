@@ -106,6 +106,16 @@ describe("SearchEngine", () => {
 		expect(restored.search("mira")).toHaveLength(2);
 	});
 
+	it("round-trips through toJSON/loadAsync", async () => {
+		const engine = makeEngine();
+		engine.upsert(doc({ id: "a.md", basename: "Mira Holt" }));
+		const restored = makeEngine();
+		await restored.loadAsync(engine.toJSON());
+		expect(restored.search("mira")[0]?.id).toBe("a.md");
+		restored.upsert(doc({ id: "c.md", basename: "Mira Bay" }));
+		expect(restored.search("mira")).toHaveLength(2);
+	});
+
 	it("returns [] for empty queries", () => {
 		const engine = makeEngine();
 		engine.upsert(doc({ id: "a.md", basename: "a" }));

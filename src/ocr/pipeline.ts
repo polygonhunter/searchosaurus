@@ -42,6 +42,11 @@ export class OcrPipeline {
 	private destroyed = false;
 	/** Finished jobs since the last forced cache write. */
 	private unsavedJobs = 0;
+	/** ocr-cache.json load, started lazily (skipped while OCR+PDF are off). */
+	private cacheLoad: Promise<void> | null = null;
+	private cacheLoaded = false;
+	/** consider() calls that arrived while the cache was still loading. */
+	private readonly pending = new Map<string, { file: TFile; priority: "high" | "low" }>();
 
 	constructor(
 		private readonly app: App,
@@ -64,16 +69,37 @@ export class OcrPipeline {
 		return this.service;
 	}
 
-	async init(plugin: Plugin): Promise<void> {
-		await this.cache.load();
-		if (this.destroyed) return;
-		// Only the device that actually runs OCR prunes entries of missing
-		// files: a phone with selective sync (no images) must never wipe
-		// the shared cache for everyone else.
+	/** Nothing to extract and nothing worth reading from the cache. */
+	private get inactive(): boolean {
 		const settings = this.getSettings();
-		if (settings.ocrEnabled && Platform.isDesktop) {
-			this.cache.prune((path) => this.app.vault.getFileByPath(path) !== null);
-		}
+		return !settings.ocrEnabled && !settings.indexPdfText;
+	}
+
+	/** Load ocr-cache.json once; replays consider() calls made meanwhile. */
+	private ensureCache(): Promise<void> {
+		this.cacheLoad ??= (async () => {
+			await this.cache.load();
+			if (this.destroyed) return;
+			// Only the device that actually runs OCR prunes entries of missing
+			// files: a phone with selective sync (no images) must never wipe
+			// the shared cache for everyone else.
+			if (this.getSettings().ocrEnabled && Platform.isDesktop) {
+				this.cache.prune((path) => this.app.vault.getFileByPath(path) !== null);
+			}
+			this.cacheLoaded = true;
+			const pending = [...this.pending.values()];
+			this.pending.clear();
+			for (const { file, priority } of pending) this.consider(file, priority);
+		})();
+		return this.cacheLoad;
+	}
+
+	/**
+	 * Wire events and load the cache (unless OCR and PDF are both off —
+	 * then the file is not even read). Safe to run in parallel with the
+	 * indexer: consider() calls wait for the cache instead of missing it.
+	 */
+	async init(plugin: Plugin): Promise<void> {
 		plugin.registerEvent(
 			this.app.vault.on("delete", (file) => {
 				this.cache.remove(file.path);
@@ -88,6 +114,7 @@ export class OcrPipeline {
 				this.saveCacheSoon();
 			}),
 		);
+		if (!this.inactive) await this.ensureCache();
 	}
 
 	async destroy(): Promise<void> {
@@ -119,6 +146,12 @@ export class OcrPipeline {
 
 	/** Enqueue every eligible attachment (used when OCR gets switched on). */
 	scanVault(priority: "high" | "low" = "low"): void {
+		if (!this.cacheLoaded) {
+			void this.ensureCache().then(() => {
+				if (!this.destroyed) this.scanVault(priority);
+			});
+			return;
+		}
 		const excluded = this.getSettings().excludedFolders;
 		for (const file of this.app.vault.getFiles()) {
 			if (isPathExcluded(file.path, excluded)) continue;
@@ -133,6 +166,13 @@ export class OcrPipeline {
 	 * (and by desktop-only recognition for images).
 	 */
 	consider(file: TFile, priority: "high" | "low"): void {
+		if (this.destroyed) return;
+		if (!this.cacheLoaded) {
+			if (this.inactive) return; // nothing to extract, cache not needed
+			this.pending.set(file.path, { file, priority });
+			void this.ensureCache();
+			return;
+		}
 		const settings = this.getSettings();
 		const kind = kindForExtension(file.extension);
 		if (kind === "image") {

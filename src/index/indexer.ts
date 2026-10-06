@@ -66,7 +66,8 @@ export class Indexer {
 		if (this.stopped) return;
 		if (persisted) {
 			try {
-				this.engine.load(persisted.indexJson);
+				await this.engine.loadAsync(persisted.indexJson);
+				if (this.stopped) return;
 				for (const [path, mtime] of Object.entries(persisted.files)) {
 					this.indexedFiles.set(path, mtime);
 				}

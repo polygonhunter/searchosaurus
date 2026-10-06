@@ -107,8 +107,10 @@ export default class SearchosaurusPlugin extends Plugin {
 		// usable immediately with whatever the startup cache already holds.
 		this.app.workspace.onLayoutReady(() => {
 			void (async () => {
-				await this.pipeline?.init(this);
-				await this.indexer?.start(this);
+				// Independent I/O (IndexedDB snapshot, ocr-cache.json): load
+				// both at once. The pipeline queues consider() calls until
+				// its cache is in, so nothing gets OCR'd twice.
+				await Promise.all([this.pipeline?.init(this), this.indexer?.start(this)]);
 				this.indexer?.healAttachments();
 			})();
 		});
