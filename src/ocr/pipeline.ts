@@ -19,6 +19,9 @@ function kindForPath(path: string): ReturnType<typeof kindForExtension> {
 /** Hard cap per file — extracted text is a low-weight helper field. */
 const MAX_EXTRACTED_CHARS = 20_000;
 const MAX_PDF_PAGES = 100;
+/** Larger PDFs are skipped (read fully into memory by pdf.js). */
+const MAX_PDF_BYTES_DESKTOP = 50 * 1024 * 1024;
+const MAX_PDF_BYTES_MOBILE = 20 * 1024 * 1024;
 /** Write ocr-cache.json at most this often while jobs keep finishing… */
 const CACHE_SAVE_DEBOUNCE_MS = 30_000;
 /** …but force a write every N finished jobs, so a crash loses little. */
@@ -177,6 +180,7 @@ export class OcrPipeline {
 				if (!this.isCurrent(file)) return;
 				const version = { mtime: file.stat.mtime, size: file.stat.size };
 				const text = await this.extractPdfText(file);
+				if (text === null) return; // transient failure: do not cache
 				this.store(file, version, "pdf", text);
 			},
 			priority,
@@ -223,7 +227,15 @@ export class OcrPipeline {
 		true,
 	);
 
-	private async extractPdfText(file: TFile): Promise<string> {
+	/**
+	 * Text layer of a PDF via Obsidian's bundled pdf.js. Returns null on a
+	 * transient failure (not cached → retried on a later start), "" for
+	 * PDFs that simply have no extractable text (scans, encrypted, too big).
+	 */
+	private async extractPdfText(file: TFile): Promise<string | null> {
+		const maxBytes = Platform.isMobile ? MAX_PDF_BYTES_MOBILE : MAX_PDF_BYTES_DESKTOP;
+		if (file.stat.size > maxBytes) return "";
+		let task: { destroy(): Promise<void> | void } | null = null;
 		try {
 			const pdfjs = (await loadPdfJs()) as {
 				getDocument(options: { data: ArrayBuffer }): {
@@ -231,28 +243,39 @@ export class OcrPipeline {
 						numPages: number;
 						getPage(n: number): Promise<{
 							getTextContent(): Promise<{ items: Array<{ str?: string }> }>;
+							cleanup?(): void;
 						}>;
 					}>;
+					destroy(): Promise<void> | void;
 				};
 			};
 			const data = await this.app.vault.readBinary(file);
-			const doc = await pdfjs.getDocument({ data }).promise;
+			if (this.destroyed) return null;
+			const loading = pdfjs.getDocument({ data });
+			task = loading;
+			const doc = await loading.promise;
 			const parts: string[] = [];
 			let length = 0;
 			const pages = Math.min(doc.numPages, MAX_PDF_PAGES);
-			for (let n = 1; n <= pages && length < MAX_EXTRACTED_CHARS; n++) {
+			for (let n = 1; n <= pages && length < MAX_EXTRACTED_CHARS && !this.destroyed; n++) {
 				const page = await doc.getPage(n);
 				const content = await page.getTextContent();
 				const pageText = content.items
 					.map((item) => item.str ?? "")
 					.join(" ")
 					.trim();
+				page.cleanup?.();
 				parts.push(pageText);
 				length += pageText.length;
 			}
 			return parts.join("\n").trim();
-		} catch {
-			return ""; // scanned/encrypted PDFs: silently nothing (v1)
+		} catch (error) {
+			// Encrypted PDFs fail the same way every time — cache as empty.
+			if (error instanceof Error && error.name === "PasswordException") return "";
+			return null;
+		} finally {
+			// Frees the pdf.js worker-side document (memory leak otherwise).
+			await Promise.resolve(task?.destroy()).catch(() => undefined);
 		}
 	}
 
