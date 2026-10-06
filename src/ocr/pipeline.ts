@@ -1,4 +1,4 @@
-import { Notice, Platform, loadPdfJs, type App, type Plugin, type TFile } from "obsidian";
+import { debounce, Notice, Platform, loadPdfJs, type App, type Plugin, type TFile } from "obsidian";
 import { kindForExtension } from "../core/classify";
 import type { SearchEngine } from "../core/engine";
 import { idleScheduler, OcrQueue } from "../core/ocr-queue";
@@ -19,6 +19,10 @@ function kindForPath(path: string): ReturnType<typeof kindForExtension> {
 /** Hard cap per file — extracted text is a low-weight helper field. */
 const MAX_EXTRACTED_CHARS = 20_000;
 const MAX_PDF_PAGES = 100;
+/** Write ocr-cache.json at most this often while jobs keep finishing… */
+const CACHE_SAVE_DEBOUNCE_MS = 30_000;
+/** …but force a write every N finished jobs, so a crash loses little. */
+const CACHE_FLUSH_EVERY = 25;
 
 /**
  * Background text extraction: images through tesseract, PDFs through
@@ -33,6 +37,8 @@ export class OcrPipeline {
 	private missingAssetsWarned = false;
 	/** Set by destroy(): late async work must not touch engine/cache. */
 	private destroyed = false;
+	/** Finished jobs since the last forced cache write. */
+	private unsavedJobs = 0;
 
 	constructor(
 		private readonly app: App,
@@ -58,22 +64,32 @@ export class OcrPipeline {
 	async init(plugin: Plugin): Promise<void> {
 		await this.cache.load();
 		if (this.destroyed) return;
+		// Only the device that actually runs OCR prunes entries of missing
+		// files: a phone with selective sync (no images) must never wipe
+		// the shared cache for everyone else.
+		const settings = this.getSettings();
+		if (settings.ocrEnabled && Platform.isDesktop) {
+			this.cache.prune((path) => this.app.vault.getFileByPath(path) !== null);
+		}
 		plugin.registerEvent(
 			this.app.vault.on("delete", (file) => {
 				this.cache.remove(file.path);
 				this.queue.drop(file.path);
+				this.saveCacheSoon();
 			}),
 		);
 		plugin.registerEvent(
 			this.app.vault.on("rename", (file, oldPath) => {
 				this.cache.rename(oldPath, file.path);
 				this.queue.drop(oldPath);
+				this.saveCacheSoon();
 			}),
 		);
 	}
 
 	async destroy(): Promise<void> {
 		this.destroyed = true;
+		this.saveCacheSoon.cancel();
 		this.queue.clear();
 		await this.service?.destroy();
 		this.service = null;
@@ -189,10 +205,23 @@ export class OcrPipeline {
 			window.setTimeout(() => this.consider(file, "high"), 0);
 			return;
 		}
-		this.cache.set(file.path, { ...version, langs, text });
-		this.apply(file, text);
-		void this.cache.save();
+		const capped = text.slice(0, MAX_EXTRACTED_CHARS);
+		this.cache.set(file.path, { ...version, langs, text: capped });
+		this.apply(file, capped);
+		// One write per batch, not one full JSON rewrite per job (that was
+		// O(n²) bytes over a large first OCR run).
+		this.saveCacheSoon();
+		if (++this.unsavedJobs >= CACHE_FLUSH_EVERY) this.saveCacheSoon.run();
 	}
+
+	private readonly saveCacheSoon = debounce(
+		() => {
+			this.unsavedJobs = 0;
+			void this.cache.save();
+		},
+		CACHE_SAVE_DEBOUNCE_MS,
+		true,
+	);
 
 	private async extractPdfText(file: TFile): Promise<string> {
 		try {

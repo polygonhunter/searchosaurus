@@ -42,6 +42,21 @@ export class OcrCache {
 		}
 	}
 
+	/**
+	 * Drop entries whose file no longer exists (deleted while the plugin
+	 * was not running). Returns how many were removed.
+	 */
+	prune(exists: (path: string) => boolean): number {
+		let removed = 0;
+		for (const path of Object.keys(this.entries)) {
+			if (exists(path)) continue;
+			delete this.entries[path];
+			removed += 1;
+		}
+		if (removed > 0) this.dirty = true;
+		return removed;
+	}
+
 	get(path: string, mtime: number, size: number, langs: string): string | null {
 		const entry = this.entries[path];
 		if (!entry) return null;
