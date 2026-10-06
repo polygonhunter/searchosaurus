@@ -5,7 +5,14 @@
  * (see match.ts), so umlaut hits get a real snippet too.
  */
 
-import { findAllMatches, findFirstMatch, foldWithMap, prepareNeedles, stripFrontmatter } from "./match";
+import {
+	findAllMatches,
+	findFirstMatch,
+	foldWithMap,
+	prepareNeedles,
+	stripFrontmatter,
+	type FoldedText,
+} from "./match";
 
 export interface Snippet {
 	text: string;
@@ -21,8 +28,21 @@ export function buildSnippet(
 	radius = DEFAULT_RADIUS,
 ): Snippet {
 	const content = stripFrontmatter(body);
-	const needles = prepareNeedles(queryWords);
-	const match = needles.length > 0 ? findFirstMatch(foldWithMap(content), needles) : null;
+	return snippetFrom(content, foldWithMap(content), prepareNeedles(queryWords), radius);
+}
+
+/**
+ * Same as buildSnippet, on content that is already frontmatter-free and
+ * folded — lets callers cache the (comparatively expensive) folding per
+ * file and reuse it across keystrokes. `needles` come from prepareNeedles.
+ */
+export function snippetFrom(
+	content: string,
+	folded: FoldedText,
+	needles: readonly string[],
+	radius = DEFAULT_RADIUS,
+): Snippet {
+	const match = needles.length > 0 ? findFirstMatch(folded, needles) : null;
 
 	// No literal match (e.g. fuzzy hit): show the body's start.
 	if (match === null) {

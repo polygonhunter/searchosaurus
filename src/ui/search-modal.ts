@@ -6,8 +6,16 @@ import { pushHistory } from "../core/history";
 import { fold, foldedWords } from "../core/normalize";
 import { containsPhrase, matchesTag, parseQuery, type ParsedQuery } from "../core/query";
 import { rankResults } from "../core/rank";
-import { findFirstMatch, foldWithMap, frontmatterLength, lineAt, prepareNeedles } from "../core/match";
-import { buildSnippet } from "../core/snippet";
+import {
+	findFirstMatch,
+	foldWithMap,
+	frontmatterLength,
+	lineAt,
+	prepareNeedles,
+	stripFrontmatter,
+	type FoldedText,
+} from "../core/match";
+import { snippetFrom } from "../core/snippet";
 import type { SearchHit } from "../core/types";
 import type { PersistentData } from "../data";
 import type { SearchosaurusSettings } from "../settings";
@@ -24,6 +32,10 @@ const ENTER_DURATION_MS = 450;
 const LAUNCHER_LIMIT = 12;
 /** Ghost (unresolved-link) rows appended to a search at most. */
 const GHOST_LIMIT = 3;
+/** Rows whose snippet is built right away; the rest when scrolled into view. */
+const EAGER_SNIPPET_ROWS = 12;
+/** Snippets only search the first part of a note (huge notes stay cheap). */
+const SNIPPET_SCAN_CHARS = 50_000;
 /** Coalesce preview renders while arrow keys auto-repeat. */
 const PREVIEW_DELAY_MS = 50;
 /** Matches the CSS breakpoint below which the preview pane is hidden. */
@@ -62,6 +74,11 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	private settingQueryProgrammatically = false;
 	/** hit id + query of what the preview shows/is about to show. */
 	private lastPreviewKey = "";
+	/** Per-open cache: folded note heads for snippets, keyed by path. */
+	private readonly textCache = new Map<string, CachedText>();
+	/** Lazily fills snippets of rows that scroll into view. */
+	private readonly snippetObserver: IntersectionObserver;
+	private readonly pendingSnippets = new WeakMap<Element, { hit: SearchHit; gen: number }>();
 	/** Bumped per getSuggestions call — async work of older calls is stale. */
 	private gen = 0;
 	private previewTimer: number | null = null;
@@ -119,6 +136,20 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			attributeFilter: ["class"],
 		});
 
+		this.snippetObserver = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					if (!entry.isIntersecting) continue;
+					this.snippetObserver.unobserve(entry.target);
+					const pending = this.pendingSnippets.get(entry.target);
+					if (pending) {
+						void this.renderNoteSnippet(pending.hit, entry.target as HTMLElement, pending.gen);
+					}
+				}
+			},
+			{ root: this.resultContainerEl, rootMargin: "200px 0px" },
+		);
+
 		this.registerKeys();
 		this.inputEl.addEventListener("keydown", this.onInputKeydown, true);
 		this.inputEl.addEventListener("input", () => {
@@ -140,6 +171,8 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		activeWindow.removeEventListener("keydown", this.modHeld);
 		activeWindow.removeEventListener("keyup", this.modHeld);
 		this.selectionObserver.disconnect();
+		this.snippetObserver.disconnect();
+		this.textCache.clear();
 		this.cancelPreview();
 		this.preview.destroy();
 		super.onClose();
@@ -261,6 +294,8 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	private finish(hits: SearchHit[], words: string[]): SearchHit[] {
 		this.currentHits = hits;
 		this.currentWords = words;
+		// Rows of the previous result list are gone — stop watching them.
+		this.snippetObserver.disconnect();
 		this.selectedIndex = 0;
 		if (hits.length === 0) {
 			this.cancelPreview();
@@ -427,7 +462,14 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 				secondaryEl.setText(hit.url ?? "");
 			} else {
 				secondaryEl.setText(parentFolder(hit.path));
-				if (hit.kind === "note") void this.renderNoteSnippet(hit, secondaryEl, this.gen);
+				if (hit.kind === "note" && this.currentWords.length > 0) {
+					if (index >= 0 && index < EAGER_SNIPPET_ROWS) {
+						void this.renderNoteSnippet(hit, secondaryEl, this.gen);
+					} else {
+						this.pendingSnippets.set(secondaryEl, { hit, gen: this.gen });
+						this.snippetObserver.observe(secondaryEl);
+					}
+				}
 			}
 		}
 
@@ -442,14 +484,12 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 	/** Bodies are not stored in the index — read lazily per rendered row. */
 	private async renderNoteSnippet(hit: SearchHit, el: HTMLElement, gen: number): Promise<void> {
-		const words = this.currentWords;
-		if (words.length === 0) return;
-		const file = this.app.vault.getFileByPath(hit.path);
-		if (!file) return;
-		const body = await this.app.vault.cachedRead(file);
+		const needles = prepareNeedles(this.currentWords);
+		if (needles.length === 0) return;
+		const text = await this.cachedText(hit.path);
 		// The row was replaced by a newer search while reading — drop it.
-		if (gen !== this.gen || !el.isConnected) return;
-		const snippet = buildSnippet(body, words);
+		if (!text || gen !== this.gen || !el.isConnected) return;
+		const snippet = snippetFrom(text.content, text.folded, needles);
 		if (snippet.text.length === 0 || snippet.ranges.length === 0) return;
 		el.empty();
 		el.addClass("searchosaurus-result-snippet");
@@ -460,6 +500,27 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			cursor = end;
 		}
 		if (cursor < snippet.text.length) el.appendText(snippet.text.slice(cursor));
+	}
+
+	/**
+	 * Folded, frontmatter-free head of a note — read and folded once per
+	 * modal open (and file version), then reused on every keystroke.
+	 */
+	private async cachedText(path: string): Promise<CachedText | null> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return null;
+		const cached = this.textCache.get(path);
+		if (cached && cached.mtime === file.stat.mtime) return cached;
+		const body = await this.app.vault.cachedRead(file);
+		const content = stripFrontmatter(body).slice(0, SNIPPET_SCAN_CHARS);
+		const entry: CachedText = {
+			mtime: file.stat.mtime,
+			body,
+			content,
+			folded: foldWithMap(content),
+		};
+		this.textCache.set(path, entry);
+		return entry;
 	}
 
 	// ----------------------------------------------------------- actions
@@ -643,6 +704,17 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			eState: line !== undefined ? { line } : undefined,
 		});
 	}
+}
+
+interface CachedText {
+	mtime: number;
+	/** Full raw body (phrase filter, jump line). */
+	body: string;
+	/** Frontmatter-free head, capped at SNIPPET_SCAN_CHARS. */
+	content: string;
+	folded: FoldedText;
+	/** fold()ed full body for phrase checks, computed on first use. */
+	phraseHaystack?: string;
 }
 
 function parentFolder(path: string): string {
