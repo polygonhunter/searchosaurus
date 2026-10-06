@@ -1,4 +1,15 @@
-import { Keymap, Notice, Platform, setIcon, SuggestModal, type App, type PaneType } from "obsidian";
+import {
+	Keymap,
+	normalizePath,
+	Notice,
+	Platform,
+	setIcon,
+	SuggestModal,
+	type App,
+	type PaneType,
+	type TFolder,
+} from "obsidian";
+import { sanitizeNoteName } from "../core/note-name";
 import type { SearchEngine } from "../core/engine";
 import { TITLE_FIELDS } from "../core/engine";
 import { topFrecent } from "../core/frecency";
@@ -49,6 +60,8 @@ export interface ModalHost {
 	settings(): SearchosaurusSettings;
 	data: PersistentData;
 	saveDataSoon(): void;
+	/** Index still loading/building — results may be incomplete. */
+	isIndexing(): boolean;
 }
 
 /**
@@ -71,6 +84,8 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	/** Backlink drill-down target (→ on a note), null = normal search. */
 	private drilldown: SearchHit | null = null;
 	private savedQuery = "";
+	/** p: folder of the current query — target folder for "Create". */
+	private createFolder: string | null = null;
 	/** Position while ↑-browsing history from the empty input. */
 	private historyPos: number | null = null;
 	private settingQueryProgrammatically = false;
@@ -305,8 +320,17 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		}
 		let limited = ranked.slice(0, this.host.settings().resultLimit);
 		limited = [...limited, ...this.ghostHits(parsed, limited)];
-		if (limited.length === 0 && parsed.text.length > 0) {
-			limited = [this.createHit(parsed.text)];
+		// Offer "Create" only for note searches, and not while the index is
+		// still building (an empty result then proves nothing).
+		const name = sanitizeNoteName(parsed.text);
+		this.createFolder = parsed.pathPrefix;
+		if (
+			limited.length === 0 &&
+			name.length > 0 &&
+			(parsed.kind === null || parsed.kind === "note") &&
+			!this.host.isIndexing()
+		) {
+			limited = [this.createHit(name)];
 		}
 		return this.finish(limited, foldedWords(parsed.text));
 	}
@@ -596,9 +620,16 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 	/** Open a hit; paneType false = current tab, otherwise tab/split/window. */
 	private openHit(hit: SearchHit, paneType: PaneType | boolean): void {
-		if (hit.ghost || hit.create) {
-			// openLinkText on a non-existing target creates the note.
-			void this.app.workspace.openLinkText(hit.basename, "", paneType);
+		if (hit.create) {
+			void this.createNote(hit.basename, paneType);
+			return;
+		}
+		if (hit.ghost) {
+			// openLinkText on a non-existing target creates the note (at the
+			// user's default location, like clicking the unresolved link).
+			this.app.workspace.openLinkText(hit.basename, "", paneType).catch((error: unknown) => {
+				new Notice(`Searchosaurus: could not create “${hit.basename}” — ${errorText(error)}`);
+			});
 			return;
 		}
 		if (hit.kind === "link") {
@@ -614,6 +645,31 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			return;
 		}
 		void this.app.workspace.openLinkText(hit.path, "", paneType);
+	}
+
+	/**
+	 * Create a note from the search text: in the p: folder when it exists,
+	 * otherwise at the user's default new-note location. An existing file
+	 * of that name is simply opened.
+	 */
+	private async createNote(name: string, paneType: PaneType | boolean): Promise<void> {
+		try {
+			const folder = this.targetFolder();
+			const path = normalizePath(folder.isRoot() ? `${name}.md` : `${folder.path}/${name}.md`);
+			const file =
+				this.app.vault.getFileByPath(path) ?? (await this.app.vault.create(path, ""));
+			await this.app.workspace.getLeaf(paneType).openFile(file);
+		} catch (error) {
+			new Notice(`Searchosaurus: could not create “${name}” — ${errorText(error)}`);
+		}
+	}
+
+	private targetFolder(): TFolder {
+		const prefix = this.createFolder?.replace(/\/+$/, "") ?? "";
+		const folder = prefix.length > 0 ? this.app.vault.getFolderByPath(prefix) : null;
+		if (folder) return folder;
+		const source = this.app.workspace.getActiveFile()?.path ?? "";
+		return this.app.fileManager.getNewFileParent(source);
 	}
 
 	/** ⇥ — drop a link to the selected result at the cursor and be done. */
@@ -791,6 +847,10 @@ interface CachedText {
 	folded: FoldedText;
 	/** fold()ed full body for phrase checks, computed on first use. */
 	phraseHaystack?: string;
+}
+
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function parentFolder(path: string): string {

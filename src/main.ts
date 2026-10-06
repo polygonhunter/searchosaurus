@@ -63,6 +63,7 @@ export default class SearchosaurusPlugin extends Plugin {
 						settings: () => this.settings,
 						data: this.data,
 						saveDataSoon: () => this.saveDataSoon(),
+						isIndexing: () => this.indexer?.indexing ?? false,
 					}).open();
 				} catch (error) {
 					console.error("Searchosaurus: failed to open search", error);

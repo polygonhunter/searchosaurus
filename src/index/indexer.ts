@@ -39,9 +39,17 @@ export class Indexer {
 	/** When the oldest unsaved change happened (max-wait anchor). */
 	private dirtySince: number | null = null;
 
+	/** Set once the startup snapshot is loaded and the vault diffed. */
+	private started = false;
+
 	/** True while the initial build/diff still has queued work. */
 	get busy(): boolean {
 		return this.queue.length > 0 || this.processing;
+	}
+
+	/** Results may still be incomplete (snapshot loading or queue busy). */
+	get indexing(): boolean {
+		return !this.started || this.busy;
 	}
 
 	constructor(
@@ -90,6 +98,7 @@ export class Indexer {
 			if (document.visibilityState === "hidden") this.flush();
 		});
 		this.reconcile();
+		this.started = true;
 	}
 
 	/**
