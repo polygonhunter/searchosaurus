@@ -6,6 +6,7 @@ import { pushHistory } from "../core/history";
 import { fold, foldedWords } from "../core/normalize";
 import { containsPhrase, matchesTag, parseQuery, type ParsedQuery } from "../core/query";
 import { rankResults } from "../core/rank";
+import { findFirstMatch, foldWithMap, frontmatterLength, lineAt, prepareNeedles } from "../core/match";
 import { buildSnippet } from "../core/snippet";
 import type { SearchHit } from "../core/types";
 import type { PersistentData } from "../data";
@@ -649,18 +650,15 @@ function parentFolder(path: string): string {
 	return idx === -1 ? "" : path.slice(0, idx);
 }
 
-/** 0-based line of the first case-insensitive occurrence of any word. */
+/**
+ * 0-based line of the first match of any word — folded like the index, so
+ * "muller" lands on "Müller". Prefers the body over the frontmatter.
+ */
 function firstMatchLine(body: string, words: readonly string[]): number | undefined {
-	const lower = body.toLowerCase();
-	let first = -1;
-	for (const word of words) {
-		const index = lower.indexOf(word.toLowerCase());
-		if (index !== -1 && (first === -1 || index < first)) first = index;
-	}
-	if (first === -1) return undefined;
-	let line = 0;
-	for (let i = 0; i < first; i++) {
-		if (body.charCodeAt(i) === 10) line += 1;
-	}
-	return line;
+	const needles = prepareNeedles(words);
+	if (needles.length === 0) return undefined;
+	const folded = foldWithMap(body);
+	const match =
+		findFirstMatch(folded, needles, frontmatterLength(body)) ?? findFirstMatch(folded, needles);
+	return match === null ? undefined : lineAt(body, match[0]);
 }

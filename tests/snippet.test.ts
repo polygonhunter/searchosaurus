@@ -51,3 +51,16 @@ describe("buildSnippet", () => {
 		}
 	});
 });
+
+describe("buildSnippet folding", () => {
+	it("highlights umlaut words for folded queries", () => {
+		const snippet = buildSnippet("Termin mit Herrn Müller in der Straße", ["muller", "strasse"]);
+		const marked = snippet.ranges.map(([s, e]) => snippet.text.slice(s, e));
+		expect(marked).toEqual(["Müller", "Straße"]);
+	});
+
+	it("skips CRLF frontmatter", () => {
+		const snippet = buildSnippet("---\r\ntags: mira\r\n---\r\nBody text mentions mira", ["mira"]);
+		expect(snippet.text).not.toContain("tags");
+	});
+});

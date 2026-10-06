@@ -1,4 +1,11 @@
 import { Component, MarkdownRenderer, setIcon, type App, type TFile } from "obsidian";
+import {
+	excerptAround,
+	findAllMatches,
+	foldWithMap,
+	prepareNeedles,
+	stripFrontmatter,
+} from "../core/match";
 import type { SearchHit } from "../core/types";
 import { iconForKind } from "./icons";
 
@@ -100,7 +107,7 @@ export class PreviewPane {
 		const body = await this.app.vault.cachedRead(file);
 		// Superseded while reading — skip the (expensive) markdown render.
 		if (token !== this.token || this.closed) return null;
-		const excerpt = excerptAround(stripFrontmatter(body), queryWords);
+		const excerpt = excerptAround(stripFrontmatter(body), queryWords, MAX_PREVIEW_CHARS);
 		const contentEl = el.createDiv({ cls: "searchosaurus-preview-note markdown-rendered" });
 		const component = new Component();
 		component.load();
@@ -142,29 +149,10 @@ export class PreviewPane {
 	}
 }
 
-function stripFrontmatter(body: string): string {
-	return body.replace(/^---\n[\s\S]*?\n---\n?/, "");
-}
-
-/** Window the raw markdown around the first query match, on line borders. */
-function excerptAround(body: string, queryWords: readonly string[]): string {
-	if (body.length <= MAX_PREVIEW_CHARS) return body;
-	const lower = body.toLowerCase();
-	let first = -1;
-	for (const word of queryWords) {
-		const index = lower.indexOf(word.toLowerCase());
-		if (index !== -1 && (first === -1 || index < first)) first = index;
-	}
-	if (first === -1) return body.slice(0, MAX_PREVIEW_CHARS);
-	const start = body.lastIndexOf("\n", Math.max(0, first - MAX_PREVIEW_CHARS / 3));
-	const end = body.indexOf("\n", first + MAX_PREVIEW_CHARS / 2);
-	return body.slice(start === -1 ? 0 : start + 1, end === -1 ? body.length : end);
-}
-
 /** Wrap query-word occurrences in <mark> across the rendered DOM. */
 function markMatches(root: HTMLElement, queryWords: readonly string[]): void {
-	const words = queryWords.map((w) => w.toLowerCase()).filter((w) => w.length > 1);
-	if (words.length === 0) return;
+	const needles = prepareNeedles(queryWords);
+	if (needles.length === 0) return;
 	const walker = root.doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 	const textNodes: Text[] = [];
 	let node = walker.nextNode();
@@ -175,27 +163,16 @@ function markMatches(root: HTMLElement, queryWords: readonly string[]): void {
 	let marks = 0;
 	for (const textNode of textNodes) {
 		if (marks >= MAX_MARKS) break;
-		let current = textNode;
-		let guard = 0;
-		while (marks < MAX_MARKS && guard++ < 20) {
-			const lower = current.data.toLowerCase();
-			let earliest = -1;
-			let length = 0;
-			for (const word of words) {
-				const index = lower.indexOf(word);
-				if (index !== -1 && (earliest === -1 || index < earliest)) {
-					earliest = index;
-					length = word.length;
-				}
-			}
-			if (earliest === -1) break;
-			const matchNode = current.splitText(earliest);
-			const rest = matchNode.splitText(length);
+		const ranges = findAllMatches(foldWithMap(textNode.data), needles, MAX_MARKS - marks);
+		// Split from the end so earlier offsets stay valid.
+		for (let i = Math.min(ranges.length, MAX_MARKS - marks) - 1; i >= 0; i--) {
+			const [start, end] = ranges[i] as [number, number];
+			const matchNode = textNode.splitText(start);
+			matchNode.splitText(end - start);
 			const mark = createEl("mark", { cls: "searchosaurus-mark" });
 			matchNode.replaceWith(mark);
 			mark.appendChild(matchNode);
 			marks += 1;
-			current = rest;
 		}
 	}
 }
