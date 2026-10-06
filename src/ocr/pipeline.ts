@@ -83,26 +83,39 @@ export class OcrPipeline {
 		}
 	}
 
-	/** Called by the indexer for every attachment it (re)indexes. */
+	/**
+	 * Called by the indexer for every attachment it (re)indexes. Cache
+	 * first, on every platform — a synced ocr-cache.json makes OCR text
+	 * searchable on mobile too. Only a cache miss is gated by the settings
+	 * (and by desktop-only recognition for images).
+	 */
 	consider(file: TFile, priority: "high" | "low"): void {
 		const settings = this.getSettings();
 		const kind = kindForExtension(file.extension);
 		if (kind === "image") {
+			const langs = settings.ocrLanguages.join("+");
+			if (this.applyCached(file, langs)) return;
 			if (!settings.ocrEnabled || !Platform.isDesktop) return;
-			this.considerImage(file, settings.ocrLanguages.join("+"), priority);
+			this.queueImage(file, langs, priority);
 			return;
 		}
-		if (kind === "file" && file.extension.toLowerCase() === "pdf" && settings.indexPdfText) {
-			this.considerPdf(file, priority);
+		if (kind === "file" && file.extension.toLowerCase() === "pdf") {
+			// PDFs are language-independent — keyed with a fixed marker.
+			if (this.applyCached(file, "pdf")) return;
+			if (!settings.indexPdfText) return;
+			this.queuePdf(file, priority);
 		}
 	}
 
-	private considerImage(file: TFile, langs: string, priority: "high" | "low"): void {
+	/** Apply a cache hit for the file's current mtime/size; true on hit. */
+	private applyCached(file: TFile, langs: string): boolean {
 		const cached = this.cache.get(file.path, file.stat.mtime, file.stat.size, langs);
-		if (cached !== null) {
-			this.apply(file, cached);
-			return;
-		}
+		if (cached === null) return false;
+		this.apply(file, cached);
+		return true;
+	}
+
+	private queueImage(file: TFile, langs: string, priority: "high" | "low"): void {
 		this.queue.push(
 			file.path,
 			async () => {
@@ -124,13 +137,7 @@ export class OcrPipeline {
 		);
 	}
 
-	private considerPdf(file: TFile, priority: "high" | "low"): void {
-		// PDFs are language-independent — keyed with a fixed marker.
-		const cached = this.cache.get(file.path, file.stat.mtime, file.stat.size, "pdf");
-		if (cached !== null) {
-			this.apply(file, cached);
-			return;
-		}
+	private queuePdf(file: TFile, priority: "high" | "low"): void {
 		this.queue.push(
 			file.path,
 			async () => {
