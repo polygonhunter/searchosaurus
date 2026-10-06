@@ -254,6 +254,15 @@
 	overflow-wrap: anywhere;
 }
 
+.searchosaurus-preview-extracted {
+	margin-top: var(--size-4-3);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	white-space: pre-wrap;
+	border-left: 2px solid var(--background-modifier-border);
+	padding-left: var(--size-4-2);
+}
+
 .searchosaurus-preview-link-context {
 	font-size: var(--font-ui-small);
 	color: var(--text-muted);

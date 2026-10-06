@@ -126,6 +126,16 @@ export class OcrPipeline {
 		await this.cache.save();
 	}
 
+	/**
+	 * Extracted (OCR/PDF) text of the file's current version, for snippets
+	 * and the preview; null when none is cached (yet).
+	 */
+	textFor(file: TFile): string | null {
+		if (!this.cacheLoaded) return null;
+		const text = this.cache.peek(file.path, file.stat.mtime, file.stat.size);
+		return text !== null && text.length > 0 ? text : null;
+	}
+
 	/** The path left the index (excluded/deleted): drop its pending job. */
 	forget(path: string): void {
 		this.queue.drop(path);

@@ -11,6 +11,8 @@ import { iconForKind } from "./icons";
 
 /** Preview body cap — enough context, never the whole 300 KB note. */
 const MAX_PREVIEW_CHARS = 1800;
+/** Recognized-text excerpt under an image/PDF preview. */
+const MAX_EXTRACTED_PREVIEW_CHARS = 600;
 /** Highlight at most this many matches (degenerate query protection). */
 const MAX_MARKS = 40;
 
@@ -31,6 +33,8 @@ export class PreviewPane {
 		private readonly el: HTMLElement,
 		/** Layout hook: lets the modal give the list full width when empty. */
 		private readonly onEmptyChange?: (empty: boolean) => void,
+		/** OCR/PDF text of an attachment, shown under thumbnail/file facts. */
+		private readonly extractedText?: (file: TFile) => string | null,
 	) {
 		el.addClass("searchosaurus-preview", "is-empty");
 		onEmptyChange?.(true);
@@ -76,12 +80,14 @@ export class PreviewPane {
 				break;
 			case "image":
 				this.buildImage(next, file);
+				this.buildExtracted(next, file, queryWords);
 				break;
 			case "link":
 				await this.buildLink(next, hit, file);
 				break;
 			case "file":
 				this.buildFile(next, file);
+				this.buildExtracted(next, file, queryWords);
 				break;
 		}
 		if (token !== this.token || this.closed) {
@@ -119,6 +125,16 @@ export class PreviewPane {
 	private buildImage(el: HTMLElement, file: TFile): void {
 		const wrap = el.createDiv({ cls: "searchosaurus-preview-image" });
 		wrap.createEl("img", { attr: { src: this.app.vault.getResourcePath(file), alt: file.name } });
+	}
+
+	/** Recognized text around the match — explains why the file matched. */
+	private buildExtracted(el: HTMLElement, file: TFile, queryWords: readonly string[]): void {
+		const text = this.extractedText?.(file);
+		if (!text) return;
+		const excerpt = excerptAround(text, queryWords, MAX_EXTRACTED_PREVIEW_CHARS);
+		const textEl = el.createDiv({ cls: "searchosaurus-preview-extracted" });
+		textEl.setText(excerpt.length < text.length ? `${excerpt}…` : excerpt);
+		markMatches(textEl, queryWords);
 	}
 
 	private buildFile(el: HTMLElement, file: TFile): void {

@@ -64,6 +64,13 @@ export class OcrCache {
 		return entry.text;
 	}
 
+	/** Cached text for this file version, whatever language combo. */
+	peek(path: string, mtime: number, size: number): string | null {
+		const entry = this.entries[path];
+		if (!entry || entry.mtime !== mtime || entry.size !== size) return null;
+		return entry.text;
+	}
+
 	set(path: string, entry: OcrCacheEntry): void {
 		this.entries[path] = entry;
 		this.dirty = true;

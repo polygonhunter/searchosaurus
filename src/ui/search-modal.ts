@@ -7,6 +7,7 @@ import {
 	SuggestModal,
 	type App,
 	type PaneType,
+	type TFile,
 	type TFolder,
 } from "obsidian";
 import { sanitizeNoteName } from "../core/note-name";
@@ -64,6 +65,8 @@ export interface ModalHost {
 	saveDataSoon(): void;
 	/** Index still loading/building — results may be incomplete. */
 	isIndexing(): boolean;
+	/** OCR/PDF text of an attachment (current version), if extracted. */
+	extractedText(file: TFile): string | null;
 }
 
 /**
@@ -137,8 +140,11 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		const body = createDiv({ cls: "searchosaurus-body" });
 		resultsParent.insertBefore(body, this.resultContainerEl);
 		body.appendChild(this.resultContainerEl);
-		this.preview = new PreviewPane(app, body.createDiv(), (empty) =>
-			this.modalEl.toggleClass("is-preview-empty", empty),
+		this.preview = new PreviewPane(
+			app,
+			body.createDiv(),
+			(empty) => this.modalEl.toggleClass("is-preview-empty", empty),
+			(file) => host.extractedText(file),
 		);
 
 		// The one allowed piece of help: a single faint line, empty state only.
@@ -168,7 +174,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 					this.snippetObserver.unobserve(entry.target);
 					const pending = this.pendingSnippets.get(entry.target);
 					if (pending) {
-						void this.renderNoteSnippet(pending.hit, entry.target as HTMLElement, pending.gen);
+						void this.renderSnippet(pending.hit, entry.target as HTMLElement, pending.gen);
 					}
 				}
 			},
@@ -553,9 +559,9 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 				secondaryEl.setText(hit.url ?? "");
 			} else {
 				secondaryEl.setText(parentFolder(hit.path));
-				if (hit.kind === "note" && this.currentWords.length > 0) {
+				if (this.currentWords.length > 0) {
 					if (index >= 0 && index < EAGER_SNIPPET_ROWS) {
-						void this.renderNoteSnippet(hit, secondaryEl, this.gen);
+						void this.renderSnippet(hit, secondaryEl, this.gen);
 					} else {
 						this.pendingSnippets.set(secondaryEl, { hit, gen: this.gen });
 						this.snippetObserver.observe(secondaryEl);
@@ -573,11 +579,14 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		}
 	}
 
-	/** Bodies are not stored in the index — read lazily per rendered row. */
-	private async renderNoteSnippet(hit: SearchHit, el: HTMLElement, gen: number): Promise<void> {
+	/**
+	 * Bodies are not stored in the index — read lazily per rendered row.
+	 * Images and PDFs show where their OCR/PDF text matched.
+	 */
+	private async renderSnippet(hit: SearchHit, el: HTMLElement, gen: number): Promise<void> {
 		const needles = prepareNeedles(this.currentWords);
 		if (needles.length === 0) return;
-		const text = await this.cachedText(hit.path);
+		const text = hit.kind === "note" ? await this.cachedText(hit.path) : this.extractedText(hit.path);
 		// The row was replaced by a newer search while reading — drop it.
 		if (!text || gen !== this.gen || !el.isConnected) return;
 		const snippet = snippetFrom(text.content, text.folded, needles);
@@ -591,6 +600,21 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			cursor = end;
 		}
 		if (cursor < snippet.text.length) el.appendText(snippet.text.slice(cursor));
+	}
+
+	/** Folded OCR/PDF text of an attachment, cached like note heads. */
+	private extractedText(path: string): CachedText | null {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return null;
+		const key = `extracted:${path}`;
+		const cached = this.textCache.get(key);
+		if (cached && cached.mtime === file.stat.mtime) return cached;
+		const body = this.host.extractedText(file);
+		if (body === null) return null;
+		const content = body.slice(0, SNIPPET_SCAN_CHARS);
+		const entry: CachedText = { mtime: file.stat.mtime, body, content, folded: foldWithMap(content) };
+		this.textCache.set(key, entry);
+		return entry;
 	}
 
 	/**
