@@ -52,6 +52,8 @@ const MOD = Platform.isMacOS || Platform.isIosApp ? "⌘" : "Ctrl+";
 const EAGER_SNIPPET_ROWS = 12;
 /** Snippets only search the first part of a note (huge notes stay cheap). */
 const SNIPPET_SCAN_CHARS = 50_000;
+/** How often the indexing status line refreshes while visible. */
+const STATUS_INTERVAL_MS = 500;
 /** Coalesce preview renders while arrow keys auto-repeat. */
 const PREVIEW_DELAY_MS = 50;
 /** Matches the CSS breakpoint below which the preview pane is hidden. */
@@ -67,6 +69,8 @@ export interface ModalHost {
 	isIndexing(): boolean;
 	/** OCR/PDF text of an attachment (current version), if extracted. */
 	extractedText(file: TFile): string | null;
+	/** Files done/queued in the running indexing pass; null when idle. */
+	indexProgress(): { done: number; total: number } | null;
 }
 
 /**
@@ -108,6 +112,10 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	/** Bumped per getSuggestions call — async work of older calls is stale. */
 	private gen = 0;
 	private previewTimer: number | null = null;
+	/** Quiet "Indexing… n / m" line; hidden once the index is complete. */
+	private readonly statusEl: HTMLElement;
+	private statusTimer: number | null = null;
+	private wasIndexing = false;
 
 	private readonly modHeld = (event: KeyboardEvent) => {
 		if (event.key === "Meta" || event.key === "Control") {
@@ -136,6 +144,9 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		const row = createDiv();
 		resultsParent.insertBefore(row, this.resultContainerEl);
 		this.filterRow = new FilterRow(row, this.filterState, () => this.refresh());
+
+		this.statusEl = createDiv({ cls: "searchosaurus-status" });
+		resultsParent.insertBefore(this.statusEl, this.resultContainerEl);
 
 		const body = createDiv({ cls: "searchosaurus-body" });
 		resultsParent.insertBefore(body, this.resultContainerEl);
@@ -195,6 +206,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		window.setTimeout(() => this.modalEl.removeClass("is-entering"), ENTER_DURATION_MS);
 		activeWindow.addEventListener("keydown", this.modHeld);
 		activeWindow.addEventListener("keyup", this.modHeld);
+		this.updateStatus();
 		if (this.initialQuery) {
 			// Pre-filled and selected: Enter searches it, typing replaces it.
 			this.setQuery(this.initialQuery);
@@ -209,6 +221,8 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		activeWindow.removeEventListener("keyup", this.modHeld);
 		this.selectionObserver.disconnect();
 		this.snippetObserver.disconnect();
+		if (this.statusTimer !== null) window.clearInterval(this.statusTimer);
+		this.statusTimer = null;
 		this.textCache.clear();
 		this.cancelPreview();
 		this.preview.destroy();
@@ -303,6 +317,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	async getSuggestions(query: string): Promise<SearchHit[]> {
 		const gen = ++this.gen;
 		if (this.drilldown) {
+			this.emptyStateText = "Nothing links here yet.";
 			return this.finish(this.backlinkHits(this.drilldown, query), []);
 		}
 
@@ -312,8 +327,11 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		this.modalEl.toggleClass("is-empty-query", isEmpty);
 
 		if (isEmpty) {
+			// Empty launcher (nothing pinned/opened yet): no "No matches."
+			this.emptyStateText = "";
 			return this.finish(this.launcherHits(), []);
 		}
+		this.emptyStateText = this.host.isIndexing() ? "No matches yet — still indexing…" : "No matches.";
 
 		const tagOnly = parsed.text.length === 0;
 		// Tag-only queries ("#project", also "n #project") search the tags
@@ -823,6 +841,32 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			this.previewTimer = null;
 			void this.preview.show(hit, words);
 		}, PREVIEW_DELAY_MS);
+	}
+
+	/**
+	 * Show indexing progress while the index is incomplete; poll quietly
+	 * while open and stop once done (the line then disappears for good).
+	 */
+	private updateStatus(): void {
+		const indexing = this.host.isIndexing();
+		this.modalEl.toggleClass("is-indexing", indexing);
+		if (!indexing) {
+			this.statusEl.empty();
+			if (this.statusTimer !== null) window.clearInterval(this.statusTimer);
+			this.statusTimer = null;
+			// Results computed against the partial index are stale now.
+			if (this.wasIndexing) this.setQuery(this.inputEl.value);
+			this.wasIndexing = false;
+			return;
+		}
+		this.wasIndexing = true;
+		const progress = this.host.indexProgress();
+		this.statusEl.setText(
+			progress && progress.total > 0
+				? `Indexing… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`
+				: "Loading index…",
+		);
+		this.statusTimer ??= window.setInterval(() => this.updateStatus(), STATUS_INTERVAL_MS);
 	}
 
 	/** The pane is display:none on phones and narrow windows — skip renders. */

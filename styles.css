@@ -281,6 +281,18 @@
 /* ---- progressive disclosure: invisible until you reach for it ---- */
 
 /* one faint help line, empty state only */
+.searchosaurus-status {
+	display: none;
+	padding: var(--size-4-1) var(--size-4-4);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+
+.searchosaurus-modal.is-indexing .searchosaurus-status {
+	display: block;
+}
+
 .searchosaurus-hint {
 	display: none;
 	padding: var(--size-4-1) var(--size-4-4) var(--size-4-2);

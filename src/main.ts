@@ -66,6 +66,7 @@ export default class SearchosaurusPlugin extends Plugin {
 						data: this.data,
 						saveDataSoon: () => this.saveDataSoon(),
 						isIndexing: () => this.indexer?.indexing ?? false,
+						indexProgress: () => this.indexer?.progress ?? null,
 						extractedText: (file) => this.pipeline?.textFor(file) ?? null,
 					}, initialQuery).open();
 				} catch (error) {
@@ -171,9 +172,13 @@ export default class SearchosaurusPlugin extends Plugin {
 	/** Folder fields fire per keystroke — reconcile once typing settles. */
 	private readonly reconcileSoon = debounce(() => this.indexer?.reconcile(), 500, true);
 
+	/** Settings escape hatch: resolves once the vault is fully re-indexed. */
 	async rebuildIndex(): Promise<void> {
-		await this.indexer?.rebuild();
+		const indexer = this.indexer;
+		if (!indexer) return;
+		await indexer.rebuild();
 		this.pipeline?.scanVault();
+		new Notice(`Searchosaurus: index rebuilt — ${indexer.indexedCount.toLocaleString()} files.`);
 	}
 
 	async loadSettings(): Promise<void> {

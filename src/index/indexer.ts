@@ -41,6 +41,11 @@ export class Indexer {
 
 	/** Set once the startup snapshot is loaded and the vault diffed. */
 	private started = false;
+	/** Files queued / finished since the queue was last empty. */
+	private batchTotal = 0;
+	private batchDone = 0;
+	/** rebuild()/whenIdle() callers waiting for the queue to drain. */
+	private idleWaiters: Array<() => void> = [];
 
 	/** True while the initial build/diff still has queued work. */
 	get busy(): boolean {
@@ -50,6 +55,23 @@ export class Indexer {
 	/** Results may still be incomplete (snapshot loading or queue busy). */
 	get indexing(): boolean {
 		return !this.started || this.busy;
+	}
+
+	/** Progress of the current indexing run; null before start or when idle. */
+	get progress(): { done: number; total: number } | null {
+		if (!this.started || !this.busy) return null;
+		return { done: this.batchDone, total: this.batchTotal };
+	}
+
+	/** Number of vault files currently in the index. */
+	get indexedCount(): number {
+		return this.indexedFiles.size;
+	}
+
+	/** Resolves once the queue is empty (immediately when idle). */
+	whenIdle(): Promise<void> {
+		if (!this.busy || this.stopped) return Promise.resolve();
+		return new Promise((resolve) => this.idleWaiters.push(resolve));
 	}
 
 	constructor(
@@ -99,6 +121,9 @@ export class Indexer {
 		});
 		this.reconcile();
 		this.started = true;
+		// Nothing stale at startup: the "initial build" is already done, so
+		// new attachments get high-priority extraction right away.
+		if (!this.busy) this.initialBuildDone = true;
 	}
 
 	/**
@@ -139,8 +164,11 @@ export class Indexer {
 		this.indexedFiles.clear();
 		this.linkDocs.clear();
 		this.extracted.clear();
+		this.batchTotal = 0;
+		this.batchDone = 0;
 		await this.persistence.clear();
 		this.reconcile();
+		await this.whenIdle();
 	}
 
 	private registerEvents(plugin: Plugin): void {
@@ -208,6 +236,7 @@ export class Indexer {
 		if (this.isExcluded(path) || this.queued.has(path)) return;
 		this.queued.add(path);
 		this.queue.push(path);
+		this.batchTotal += 1;
 		void this.processQueue();
 	}
 
@@ -219,7 +248,10 @@ export class Indexer {
 		this.extracted.delete(path);
 		if (this.queued.delete(path)) {
 			const index = this.queue.indexOf(path);
-			if (index >= 0) this.queue.splice(index, 1);
+			if (index >= 0) {
+				this.queue.splice(index, 1);
+				this.batchTotal = Math.max(0, this.batchTotal - 1);
+			}
 		}
 		this.onForget?.(path);
 		this.saveSoon();
@@ -236,6 +268,7 @@ export class Indexer {
 				if (path === undefined) break;
 				this.queued.delete(path);
 				await this.indexPath(path);
+				this.batchDone += 1;
 				if (!this.initialBuildDone && ++sinceCheckpoint >= CHECKPOINT_EVERY) {
 					sinceCheckpoint = 0;
 					this.flush();
@@ -249,6 +282,11 @@ export class Indexer {
 			}
 		} finally {
 			this.processing = false;
+			this.batchTotal = 0;
+			this.batchDone = 0;
+			const waiters = this.idleWaiters;
+			this.idleWaiters = [];
+			for (const resolve of waiters) resolve();
 		}
 		const firstBuild = !this.initialBuildDone;
 		this.initialBuildDone = true;
