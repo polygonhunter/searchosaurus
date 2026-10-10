@@ -153,6 +153,26 @@ describe("SearchEngine", () => {
 		expect(ids).toEqual(["b.md"]);
 	});
 
+	it("keeps multi-word queries AND-combined when excluding", () => {
+		const engine = makeEngine();
+		engine.upsert(doc({ id: "1.md", basename: "eins", body: "projekt alpha bericht" }));
+		engine.upsert(doc({ id: "2.md", basename: "zwei", body: "projekt beta" }));
+		engine.upsert(doc({ id: "3.md", basename: "drei", body: "projekt alpha geheim" }));
+		const ids = engine.searchWithExcludes("projekt alpha", ["geheim"]).map((h) => h.id);
+		expect(ids).toEqual(["1.md"]);
+	});
+
+	it("keeps multi-tag queries AND-combined when excluding", () => {
+		const engine = makeEngine();
+		engine.upsert(doc({ id: "ab.md", basename: "ab", tags: "a b" }));
+		engine.upsert(doc({ id: "a.md", basename: "nur a", tags: "a" }));
+		engine.upsert(doc({ id: "abx.md", basename: "abx", tags: "a b x" }));
+		const ids = engine
+			.searchWithExcludes("a b", ["x"], { fields: ["tags"], fuzzy: false })
+			.map((h) => h.id);
+		expect(ids).toEqual(["ab.md"]);
+	});
+
 	it("returns [] for empty queries", () => {
 		const engine = makeEngine();
 		engine.upsert(doc({ id: "a.md", basename: "a" }));

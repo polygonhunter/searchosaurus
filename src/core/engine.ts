@@ -104,7 +104,11 @@ export class SearchEngine {
 		const combined: Query = {
 			combineWith: "AND_NOT",
 			queries: [
-				query,
+				// MiniSearch hands the outer combineWith down to string
+				// sub-queries, so a bare `query` here would join its own
+				// words with AND_NOT ("projekt alpha" → "projekt ohne
+				// alpha"). Wrapping pins the positive words to AND.
+				{ combineWith: "AND", queries: [query] },
 				{
 					// Exclusions are literal: "-test" must not drop notes that
 					// merely contain "testament" (prefix) or "text" (fuzzy) —
