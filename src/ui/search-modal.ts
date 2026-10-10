@@ -102,6 +102,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	private settingQueryProgrammatically = false;
 	/** hit id + query of what the preview shows/is about to show. */
 	private lastPreviewKey = "";
+	private wasPreviewVisible = true;
 	/** Unresolved link names, folded — built once per open. */
 	private ghostCandidates: Array<{ name: string; folded: string }> | null = null;
 	/** Backlinks of the current drill-down target, folded. */
@@ -208,6 +209,8 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		window.setTimeout(() => this.modalEl.removeClass("is-entering"), ENTER_DURATION_MS);
 		activeWindow.addEventListener("keydown", this.modHeld);
 		activeWindow.addEventListener("keyup", this.modHeld);
+		activeWindow.addEventListener("resize", this.onResize);
+		this.wasPreviewVisible = this.previewVisible();
 		this.updateStatus();
 		if (this.initialQuery) {
 			// Pre-filled and selected: Enter searches it, typing replaces it.
@@ -221,6 +224,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	onClose(): void {
 		activeWindow.removeEventListener("keydown", this.modHeld);
 		activeWindow.removeEventListener("keyup", this.modHeld);
+		activeWindow.removeEventListener("resize", this.onResize);
 		this.selectionObserver.disconnect();
 		this.snippetObserver.disconnect();
 		if (this.statusTimer !== null) window.clearInterval(this.statusTimer);
@@ -881,6 +885,17 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		);
 		this.statusTimer ??= window.setInterval(() => this.updateStatus(), STATUS_INTERVAL_MS);
 	}
+
+	/**
+	 * Narrow → wide while open: the preview was skipped, render it now
+	 * (wide → narrow clears it). Only acts when the visibility flips.
+	 */
+	private readonly onResize = (): void => {
+		const visible = this.previewVisible();
+		if (visible === this.wasPreviewVisible) return;
+		this.wasPreviewVisible = visible;
+		this.syncSelection();
+	};
 
 	/** The pane is display:none on phones and narrow windows — skip renders. */
 	private previewVisible(): boolean {
