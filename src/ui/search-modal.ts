@@ -65,6 +65,8 @@ export interface ModalHost {
 	settings(): SearchosaurusSettings;
 	data: PersistentData;
 	saveDataSoon(): void;
+	/** Write data.json right away (pins: the sync merge trusts the file). */
+	saveDataNow(): void;
 	/** Index still loading/building — results may be incomplete. */
 	isIndexing(): boolean;
 	/** OCR/PDF text of an attachment (current version), if extracted. */
@@ -776,7 +778,10 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		} else {
 			pins.unshift(hit.path);
 		}
-		this.host.saveDataSoon();
+		// Immediately, not debounced: a data.json arriving by sync within
+		// the delay would otherwise overwrite the pin change (pins follow
+		// the file in mergePersistentData).
+		this.host.saveDataNow();
 		this.refresh();
 	}
 

@@ -66,6 +66,10 @@ export default class SearchosaurusPlugin extends Plugin {
 						settings: () => this.settings,
 						data: this.data,
 						saveDataSoon: () => this.saveDataSoon(),
+						saveDataNow: () => {
+							this.saveDataSoon();
+							this.saveDataSoon.run();
+						},
 						isIndexing: () => this.indexer?.indexing ?? false,
 						indexProgress: () => this.indexer?.progress ?? null,
 						extractedText: (file) => this.pipeline?.textFor(file) ?? null,
