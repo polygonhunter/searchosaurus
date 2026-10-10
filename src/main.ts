@@ -147,7 +147,7 @@ export default class SearchosaurusPlugin extends Plugin {
 	 * Called by the settings tab after any change. Only does the work the
 	 * actual change requires — a slider tick must not re-scan the vault.
 	 */
-	onSettingsChanged(): void {
+	onSettingsChanged(source: "local" | "sync" = "local"): void {
 		const change = diffSettings(this.appliedSettings, this.settings);
 		this.appliedSettings = snapshotSettings(this.settings);
 
@@ -157,9 +157,12 @@ export default class SearchosaurusPlugin extends Plugin {
 		if (change.ocrStarted && Platform.isDesktop) {
 			// One-time asset download, then sweep existing images/PDFs.
 			void this.ensureAssetsOnce().then(async (ok) => {
-				if (!ok && this.settings.ocrEnabled) {
+				if (!ok && this.settings.ocrEnabled && source === "local") {
 					// Download failed (Notice already shown): switch OCR back
 					// off so the toggle tells the truth and a retry is a click.
+					// Never for a synced change — saving "off" would sync back
+					// and switch OCR off on every device (this one is merely
+					// offline); jobs wait for the assets until the next start.
 					this.settings.ocrEnabled = false;
 					this.appliedSettings = snapshotSettings(this.settings);
 					await this.saveSettings();
@@ -215,7 +218,7 @@ export default class SearchosaurusPlugin extends Plugin {
 		const merged = mergePersistentData(this.data, remote);
 		// Mutate in place: open modals hold a reference to this.data.
 		Object.assign(this.data, merged);
-		this.onSettingsChanged();
+		this.onSettingsChanged("sync");
 		// Write back only if the file lacks something we have (opens).
 		if (!coversData(remote, merged)) this.saveDataSoon();
 	}
