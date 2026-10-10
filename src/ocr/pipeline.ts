@@ -339,6 +339,9 @@ export class OcrPipeline {
 
 	/** Push extracted text into the index and schedule persistence. */
 	private apply(file: TFile, text: string): void {
+		// The folder may have been excluded while the job ran: the indexer
+		// already dropped the file, so do not bring it back.
+		if (isPathExcluded(file.path, this.getSettings().excludedFolders)) return;
 		this.engine.upsert(attachmentDoc(file, text.slice(0, MAX_EXTRACTED_CHARS)));
 		this.onApplied(file.path, file.stat.mtime);
 	}

@@ -215,7 +215,11 @@ export class Indexer {
 		for (const file of this.app.vault.getFiles()) {
 			seen.add(file.path);
 			if (this.isExcluded(file.path)) {
-				if (this.indexedFiles.has(file.path) || this.queued.has(file.path)) {
+				if (
+					this.indexedFiles.has(file.path) ||
+					this.queued.has(file.path) ||
+					this.extracted.has(file.path)
+				) {
 					this.forget(file.path);
 				}
 				continue;
@@ -308,6 +312,8 @@ export class Indexer {
 			const docs = await extractDocs(this.app, file);
 			// Deleted/renamed while reading: the event handlers own it now.
 			if (this.stopped || this.app.vault.getFileByPath(path) !== file) return;
+			// Folder excluded while reading: reconcile() already dropped it.
+			if (this.isExcluded(path)) return;
 			const newLinkIds = new Set(
 				docs.filter((doc) => doc.kind === "link").map((doc) => doc.id),
 			);
