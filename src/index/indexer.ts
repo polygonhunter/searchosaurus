@@ -274,7 +274,15 @@ export class Indexer {
 				this.queued.delete(path);
 				await this.indexPath(path);
 				this.batchDone += 1;
-				if (!this.initialBuildDone && ++sinceCheckpoint >= CHECKPOINT_EVERY) {
+				// Checkpoint spacing grows with the index (every 2,000 files,
+				// then at least as many files as are already indexed): each
+				// checkpoint serializes the whole index synchronously, so a
+				// fixed spacing would cost O(n²) on large vaults — doubling
+				// keeps the total at about twice one final save.
+				if (
+					!this.initialBuildDone &&
+					++sinceCheckpoint >= Math.max(CHECKPOINT_EVERY, this.indexedFiles.size)
+				) {
 					sinceCheckpoint = 0;
 					this.flush();
 				}
