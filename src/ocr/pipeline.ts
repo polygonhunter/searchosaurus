@@ -189,7 +189,7 @@ export class OcrPipeline {
 			const langs = settings.ocrLanguages.join("+");
 			if (this.applyCached(file, langs)) return;
 			if (!settings.ocrEnabled || !Platform.isDesktop) return;
-			this.queueImage(file, langs, priority);
+			this.queueImage(file, priority);
 			return;
 		}
 		if (kind === "file" && file.extension.toLowerCase() === "pdf") {
@@ -208,17 +208,28 @@ export class OcrPipeline {
 		return true;
 	}
 
-	private queueImage(file: TFile, langs: string, priority: "high" | "low"): void {
+	private queueImage(file: TFile, priority: "high" | "low"): void {
+		const currentLangs = (): string => this.getSettings().ocrLanguages.join("+");
 		this.queue.push(
 			file.path,
 			async () => {
 				// OCR may have been switched off while this job waited.
 				if (!this.getSettings().ocrEnabled) return;
 				if (!(await this.assetsReady()) || !this.isCurrent(file)) return;
+				// Languages are read when the job runs, not when it was
+				// queued: a language change must not be served by jobs that
+				// were queued before it (the queue's per-key lock keeps the
+				// re-scan from re-queueing them).
+				const langs = currentLangs();
 				const version = { mtime: file.stat.mtime, size: file.stat.size };
 				const url = this.app.vault.getResourcePath(file);
 				const service = await this.getService();
 				const text = await service.recognize(url, langs);
+				if (langs !== currentLangs()) {
+					// Changed mid-recognition: redo with the new languages.
+					window.setTimeout(() => this.consider(file, "high"), 0);
+					return;
+				}
 				this.store(file, version, langs, text);
 			},
 			priority,
