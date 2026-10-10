@@ -281,12 +281,16 @@ export class OcrPipeline {
 
 	/**
 	 * Text layer of a PDF via Obsidian's bundled pdf.js. Returns null on a
-	 * transient failure (not cached → retried on a later start), "" for
-	 * PDFs that simply have no extractable text (scans, encrypted, too big).
+	 * transient failure or a PDF too big for this device (not cached →
+	 * retried later / by another device), "" for PDFs that simply have no
+	 * extractable text (scans, encrypted, too big for any device).
 	 */
 	private async extractPdfText(file: TFile): Promise<string | null> {
-		const maxBytes = Platform.isMobile ? MAX_PDF_BYTES_MOBILE : MAX_PDF_BYTES_DESKTOP;
-		if (file.stat.size > maxBytes) return "";
+		// Too big for any device: cache as empty. Only too big for this
+		// (mobile) device: skip without caching — a synced ocr-cache.json
+		// would otherwise stop the desktop from ever reading it.
+		if (file.stat.size > MAX_PDF_BYTES_DESKTOP) return "";
+		if (Platform.isMobile && file.stat.size > MAX_PDF_BYTES_MOBILE) return null;
 		let task: { destroy(): Promise<void> | void } | null = null;
 		try {
 			const pdfjs = (await loadPdfJs()) as {
