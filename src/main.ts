@@ -207,7 +207,10 @@ export default class SearchosaurusPlugin extends Plugin {
 	async onExternalSettingsChange(): Promise<void> {
 		const raw = (await this.loadData()) as Partial<StoredShape> | null;
 		if (!raw) return;
-		this.settings = { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) };
+		// Mutate in place: an open settings tab holds a reference to
+		// this.settings — a new object would swallow its later edits.
+		Object.assign(this.settings, { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) });
+		if (this.settingTab?.containerEl.isShown()) this.settingTab.display();
 		const remote = { ...structuredClone(DEFAULT_DATA), ...(raw.data ?? {}) };
 		const merged = mergePersistentData(this.data, remote);
 		// Mutate in place: open modals hold a reference to this.data.
