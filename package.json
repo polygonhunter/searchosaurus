@@ -33,6 +33,6 @@
 	"dependencies": {
 		"fflate": "^0.8.2",
 		"minisearch": "^7.1.0",
-		"tesseract.js": "^6.0.1"
+		"tesseract.js": "6.0.1"
 	}
 }

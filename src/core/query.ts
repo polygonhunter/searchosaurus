@@ -17,6 +17,8 @@ export interface ParsedQuery {
 	phrases: string[];
 	/** -excluded words. */
 	excludes: string[];
+	/** -"excluded phrases" (verbatim; fold at match time). */
+	excludedPhrases: string[];
 	/** mod:… recency filter in days, null = no filter. */
 	modifiedWithinDays: number | null;
 }
@@ -41,14 +43,18 @@ const MOD_ALIASES: Record<string, number> = {
 };
 
 const PHRASE_RE = /"([^"]*)"/g;
+/** p:"folder with spaces/" — quoted before phrases are pulled out. */
+const QUOTED_PATH_RE = /(^|\s)(?:p|path|pfad):"([^"]*)"/gi;
+/** -"excluded phrase" — likewise, or it would become a required phrase. */
+const EXCLUDED_PHRASE_RE = /(^|\s)-"([^"]*)"/g;
 
 /**
  * Parse the raw prompt input. Grammar:
  *   - leading `n `, `f `, `d `, `i `, `l ` → type operator (title-focused search)
  *   - `#tag` → tag filter (nested tags match by prefix)
- *   - `-word` → exclusion
+ *   - `-word` → exclusion, `-"some phrase"` → phrase exclusion
  *   - `"exact phrase"` → phrase filter
- *   - `p:folder/` (or path:/pfad:) → path prefix filter
+ *   - `p:folder/` or `p:"folder with spaces/"` (or path:/pfad:) → path prefix filter
  *   - `mod:heute|woche|monat|jahr` (or today|week|month|year) → recency filter
  * Everything else stays in `text`.
  */
@@ -60,6 +66,7 @@ export function parseQuery(raw: string): ParsedQuery {
 		pathPrefix: null,
 		phrases: [],
 		excludes: [],
+		excludedPhrases: [],
 		modifiedWithinDays: null,
 	};
 
@@ -71,6 +78,16 @@ export function parseQuery(raw: string): ParsedQuery {
 		rest = kindMatch[2];
 	}
 
+	rest = rest.replace(QUOTED_PATH_RE, (_all, lead: string, folder: string) => {
+		const trimmed = folder.trim();
+		if (trimmed.length > 0) result.pathPrefix = trimmed;
+		return `${lead} `;
+	});
+	rest = rest.replace(EXCLUDED_PHRASE_RE, (_all, lead: string, phrase: string) => {
+		const trimmed = phrase.trim();
+		if (trimmed.length > 0) result.excludedPhrases.push(trimmed);
+		return `${lead} `;
+	});
 	rest = rest.replace(PHRASE_RE, (_all, phrase: string) => {
 		const trimmed = phrase.trim();
 		if (trimmed.length > 0) result.phrases.push(trimmed);

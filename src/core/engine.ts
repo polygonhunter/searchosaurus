@@ -1,9 +1,9 @@
 import MiniSearch, { type Options, type Query, type SearchOptions } from "minisearch";
 import { processTerm } from "./normalize";
-import type { FieldWeights, IndexedDoc, SearchHit } from "./types";
+import type { FieldWeights, IndexedDoc, ResultKind, SearchHit } from "./types";
 
 /** Bump when the doc schema or normalization changes → forces a rebuild. */
-export const INDEX_SCHEMA_VERSION = 2;
+export const INDEX_SCHEMA_VERSION = 3;
 
 const INDEX_FIELDS = [
 	"basename",
@@ -33,6 +33,17 @@ const MAX_FUZZY_EDITS = 2;
 
 /** Title-focused subset used by the n/f/i/l prefix operators. */
 export const TITLE_FIELDS: readonly string[] = ["basename", "aliases", "url"];
+
+/**
+ * Fields a typed operator searches: titles — plus the OCR/PDF text for
+ * images and files, whose content lives nowhere else ("i rechnung" must
+ * find the scanned invoice, not only a file named "rechnung").
+ */
+export function operatorFields(kind: ResultKind): string[] {
+	return kind === "image" || kind === "file"
+		? [...TITLE_FIELDS, "extractedText"]
+		: [...TITLE_FIELDS];
+}
 
 function miniSearchOptions(weights: FieldWeights): Options<IndexedDoc> {
 	return {

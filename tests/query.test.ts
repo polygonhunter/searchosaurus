@@ -62,6 +62,26 @@ describe("parseQuery — filters", () => {
 		expect(parseQuery("pfad:Archiv/ x").pathPrefix).toBe("Archiv/");
 	});
 
+	it("accepts quoted p: folders with spaces", () => {
+		const parsed = parseQuery('p:"Daily Notes/" standup');
+		expect(parsed.pathPrefix).toBe("Daily Notes/");
+		expect(parsed.phrases).toEqual([]);
+		expect(parsed.text).toBe("standup");
+		expect(parseQuery('mira path:"Old Projects/"').pathPrefix).toBe("Old Projects/");
+	});
+
+	it("treats -\"phrase\" as an exclusion, not a required phrase", () => {
+		const parsed = parseQuery('-"draft notes" design "exact words"');
+		expect(parsed.excludedPhrases).toEqual(["draft notes"]);
+		expect(parsed.phrases).toEqual(["exact words"]);
+		expect(parsed.excludes).toEqual([]);
+		expect(parsed.text).toBe("design exact words");
+	});
+
+	it("keeps a hyphen inside a word in front of a quote as text", () => {
+		expect(parseQuery('x-"y"').excludedPhrases).toEqual([]);
+	});
+
 	it("parses mod: aliases (German and English)", () => {
 		expect(parseQuery("mira mod:heute").modifiedWithinDays).toBe(1);
 		expect(parseQuery("mira mod:woche").modifiedWithinDays).toBe(7);

@@ -1,5 +1,5 @@
-import { debounce, Notice, Platform, loadPdfJs, type App, type Plugin, type TFile } from "obsidian";
-import { kindForExtension } from "../core/classify";
+import { debounce, Platform, loadPdfJs, type App, type Plugin, type TFile } from "obsidian";
+import { isOcrImage, kindForExtension } from "../core/classify";
 import type { SearchEngine } from "../core/engine";
 import { idleScheduler, OcrQueue } from "../core/ocr-queue";
 import { isPathExcluded } from "../core/paths";
@@ -37,7 +37,8 @@ export class OcrPipeline {
 	private readonly queue = new OcrQueue(idleScheduler(window));
 	private readonly cache: OcrCache;
 	private service: OcrService | null = null;
-	private missingAssetsWarned = false;
+	/** The one in-session download attempt for missing assets was made. */
+	private assetsDownloadTried = false;
 	/** Set by destroy(): late async work must not touch engine/cache. */
 	private destroyed = false;
 	/** Finished jobs since the last forced cache write. */
@@ -55,6 +56,8 @@ export class OcrPipeline {
 		private readonly manifestDir: string,
 		/** Extracted text for this file version landed in the index. */
 		private readonly onApplied: (path: string, mtime: number) => void,
+		/** Shared one-time asset download (main.ts); resolves to success. */
+		private readonly ensureAssets: () => Promise<boolean>,
 	) {
 		this.cache = new OcrCache(app, manifestDir);
 	}
@@ -188,7 +191,7 @@ export class OcrPipeline {
 		if (kind === "image") {
 			const langs = settings.ocrLanguages.join("+");
 			if (this.applyCached(file, langs)) return;
-			if (!settings.ocrEnabled || !Platform.isDesktop) return;
+			if (!settings.ocrEnabled || !Platform.isDesktop || !isOcrImage(file.extension)) return;
 			this.queueImage(file, priority);
 			return;
 		}
@@ -224,7 +227,16 @@ export class OcrPipeline {
 				const version = { mtime: file.stat.mtime, size: file.stat.size };
 				const url = this.app.vault.getResourcePath(file);
 				const service = await this.getService();
-				const text = await service.recognize(url, langs);
+				let text: string;
+				try {
+					text = await service.recognize(url, langs);
+				} catch (error) {
+					// An image tesseract cannot decode fails the same way every
+					// time — cache it as empty, like a corrupt PDF. Anything else
+					// (e.g. OCR switched off mid-job) stays uncached.
+					if (!String(error).includes("Error attempting to read image")) throw error;
+					text = "";
+				}
 				if (langs !== currentLangs()) {
 					// Changed mid-recognition: redo with the new languages.
 					window.setTimeout(() => this.consider(file, "high"), 0);
@@ -361,15 +373,16 @@ export class OcrPipeline {
 		this.onApplied(file.path, file.stat.mtime);
 	}
 
+	/**
+	 * Assets on disk, or fetched now: OCR can be on without them — e.g. a
+	 * second desktop whose data.json synced the switch but not the plugin's
+	 * assets folder. One attempt per session; a failure shows its own
+	 * Notice, and switching OCR off and on retries.
+	 */
 	private async assetsReady(): Promise<boolean> {
-		const present = await assetsPresent(this.app, this.manifestDir);
-		if (!present && !this.missingAssetsWarned) {
-			this.missingAssetsWarned = true;
-			new Notice(
-				"Searchosaurus: OCR is enabled but its assets are missing — re-run the download from the settings tab.",
-				8000,
-			);
-		}
-		return present;
+		if (await assetsPresent(this.app, this.manifestDir)) return true;
+		if (this.assetsDownloadTried) return false;
+		this.assetsDownloadTried = true;
+		return this.ensureAssets();
 	}
 }

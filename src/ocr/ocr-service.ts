@@ -1,5 +1,5 @@
 import type { App } from "obsidian";
-import { createWorker, OEM, type Worker } from "tesseract.js";
+import { createWorker, OEM, type RecognizeResult, type Worker } from "tesseract.js";
 import { assetUrl } from "./assets";
 
 /** Idle worker is terminated after this long (~100+ MB WASM heap). */
@@ -19,6 +19,12 @@ export class OcrService {
 	private idleTimer: number | null = null;
 	/** Recognitions in flight — never terminate under a running job. */
 	private busy = 0;
+	/**
+	 * Rejecters of in-flight recognitions. tesseract's terminate() kills the
+	 * worker but never settles its pending jobs — without this, a job cut
+	 * off by an OCR switch-off would hang and wedge the serial job queue.
+	 */
+	private readonly pending = new Set<(reason: Error) => void>();
 
 	constructor(
 		private readonly app: App,
@@ -30,7 +36,13 @@ export class OcrService {
 		this.busy += 1;
 		try {
 			const worker = await this.getWorker(langs);
-			const result = await worker.recognize(imagePathOrUrl);
+			const result = await new Promise<RecognizeResult>((resolve, reject) => {
+				this.pending.add(reject);
+				void worker
+					.recognize(imagePathOrUrl)
+					.then(resolve, reject)
+					.finally(() => this.pending.delete(reject));
+			});
 			return result.data.text.trim();
 		} finally {
 			this.busy -= 1;
@@ -64,6 +76,8 @@ export class OcrService {
 		const worker = this.worker;
 		this.worker = null;
 		this.workerLangs = "";
+		for (const reject of this.pending) reject(new Error("Searchosaurus: OCR worker terminated"));
+		this.pending.clear();
 		if (worker) await worker.terminate().catch(() => undefined);
 	}
 
@@ -78,6 +92,9 @@ export class OcrService {
 			langPath: assetUrl(this.app, this.manifestDir, "").replace(/\/$/, ""),
 			gzip: true,
 			cacheMethod: "none", // our own cache; keep IndexedDB out of it
+			// Failed jobs already reject recognize(); without a handler
+			// tesseract additionally throws them as uncaught errors.
+			errorHandler: () => undefined,
 		});
 		if (this.destroyed) {
 			// Plugin unloaded while the worker was booting — do not leak it.

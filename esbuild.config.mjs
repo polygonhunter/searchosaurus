@@ -50,8 +50,24 @@ const stubRegenerator = {
 	},
 };
 
+// tesseract.js's browser defaults point workerPath at a jsDelivr CDN URL
+// (and pull in its package.json for the version). We always pass a local
+// workerPath, so swap that module for one without the remote default.
+const localTesseractDefaults = {
+	name: "local-tesseract-defaults",
+	setup(build) {
+		build.onLoad({ filter: /tesseract\.js[\\/]src[\\/]worker[\\/]browser[\\/]defaultOptions\.js$/ }, (args) => ({
+			contents:
+				"'use strict';\n" +
+				"module.exports = { ...require('../../constants/defaultOptions'), workerPath: '' };\n",
+			loader: "js",
+			resolveDir: path.dirname(args.path),
+		}));
+	},
+};
+
 const context = await esbuild.context({
-	plugins: [stubRegenerator],
+	plugins: [stubRegenerator, localTesseractDefaults],
 	banner: {
 		js: banner,
 	},

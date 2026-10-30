@@ -117,7 +117,12 @@ export class PreviewPane {
 		const contentEl = el.createDiv({ cls: "searchosaurus-preview-note markdown-rendered" });
 		const component = new Component();
 		component.load();
-		await MarkdownRenderer.render(this.app, excerpt, contentEl, file.path, component);
+		try {
+			await MarkdownRenderer.render(this.app, excerpt, contentEl, file.path, component);
+		} catch (error) {
+			component.unload(); // never attached — do not leak its children
+			throw error;
+		}
 		markMatches(contentEl, queryWords);
 		return component;
 	}

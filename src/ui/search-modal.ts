@@ -12,7 +12,7 @@ import {
 } from "obsidian";
 import { sanitizeNoteName } from "../core/note-name";
 import type { SearchEngine } from "../core/engine";
-import { TITLE_FIELDS } from "../core/engine";
+import { operatorFields } from "../core/engine";
 import { topFrecent } from "../core/frecency";
 import { pushHistory } from "../core/history";
 import { fold, foldedWords } from "../core/normalize";
@@ -50,6 +50,8 @@ const GHOST_LIMIT = 3;
 const MOD = Platform.isMacOS || Platform.isIosApp ? "⌘" : "Ctrl+";
 /** Rows whose snippet is built right away; the rest when scrolled into view. */
 const EAGER_SNIPPET_ROWS = 12;
+/** Characters of context before the match in a (single-line) row snippet. */
+const ROW_SNIPPET_LEAD = 24;
 /** Snippets only search the first part of a note (huge notes stay cheap). */
 const SNIPPET_SCAN_CHARS = 50_000;
 /** How often the indexing status line refreshes while visible. */
@@ -125,6 +127,12 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 			this.modalEl.toggleClass("mods-held", event.type === "keydown");
 		}
 	};
+
+	/** ⌘ released in another app (⌘-Tab) never sends keyup here. */
+	private readonly modReleased = () => this.modalEl.removeClass("mods-held");
+
+	/** The window the modal lives in — listeners are added and removed there. */
+	private win: Window | null = null;
 
 	constructor(
 		app: App,
@@ -207,9 +215,11 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		// Stagger the very first result paint only — never on keystrokes.
 		this.modalEl.addClass("is-entering");
 		window.setTimeout(() => this.modalEl.removeClass("is-entering"), ENTER_DURATION_MS);
-		activeWindow.addEventListener("keydown", this.modHeld);
-		activeWindow.addEventListener("keyup", this.modHeld);
-		activeWindow.addEventListener("resize", this.onResize);
+		this.win = this.modalEl.win;
+		this.win.addEventListener("keydown", this.modHeld);
+		this.win.addEventListener("keyup", this.modHeld);
+		this.win.addEventListener("blur", this.modReleased);
+		this.win.addEventListener("resize", this.onResize);
 		this.wasPreviewVisible = this.previewVisible();
 		this.updateStatus();
 		if (this.initialQuery) {
@@ -222,9 +232,11 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	}
 
 	onClose(): void {
-		activeWindow.removeEventListener("keydown", this.modHeld);
-		activeWindow.removeEventListener("keyup", this.modHeld);
-		activeWindow.removeEventListener("resize", this.onResize);
+		this.win?.removeEventListener("keydown", this.modHeld);
+		this.win?.removeEventListener("keyup", this.modHeld);
+		this.win?.removeEventListener("blur", this.modReleased);
+		this.win?.removeEventListener("resize", this.onResize);
+		this.win = null;
 		this.selectionObserver.disconnect();
 		this.snippetObserver.disconnect();
 		if (this.statusTimer !== null) window.clearInterval(this.statusTimer);
@@ -283,7 +295,12 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		const history = this.host.data.searchHistory;
 
 		if (event.key === "ArrowUp" && !this.drilldown) {
-			if ((value === "" || this.historyPos !== null) && history.length > 0) {
+			// Only from the top row — further down, ↑ moves the selection.
+			if (
+				(value === "" || this.historyPos !== null) &&
+				this.selectedIndex === 0 &&
+				history.length > 0
+			) {
 				event.preventDefault();
 				event.stopPropagation();
 				this.historyPos =
@@ -350,19 +367,19 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		const tagOnly = parsed.text.length === 0;
 		// Tag-only queries ("#project", also "n #project") search the tags
 		// field itself, literally; typed operators otherwise search
-		// title-focused; plain queries all fields.
+		// title-focused (plus OCR/PDF text for i/f); plain queries all fields.
 		const options = tagOnly
 			? { fields: ["tags"], fuzzy: false }
 			: parsed.kind !== null
-				? { fields: [...TITLE_FIELDS] }
+				? { fields: operatorFields(parsed.kind) }
 				: undefined;
 		const engineQuery = tagOnly ? parsed.tags.join(" ") : parsed.text;
 		let hits = this.host.engine.searchWithExcludes(engineQuery, parsed.excludes, options);
 
 		hits = this.applyFilters(hits, parsed);
 		let ranked = rankResults(hits, parsed.text, this.filterState.sort);
-		if (parsed.phrases.length > 0) {
-			ranked = await this.filterByPhrases(ranked, parsed.phrases, gen);
+		if (parsed.phrases.length > 0 || parsed.excludedPhrases.length > 0) {
+			ranked = await this.filterByPhrases(ranked, parsed.phrases, parsed.excludedPhrases, gen);
 			// A newer keystroke superseded this run: keep the newest results.
 			if (gen !== this.gen) return this.currentHits;
 		}
@@ -372,10 +389,11 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		// still building (an empty result then proves nothing).
 		const name = sanitizeNoteName(parsed.text);
 		this.createFolder = parsed.pathPrefix;
+		const kind = parsed.kind ?? this.filterState.kind;
 		if (
 			limited.length === 0 &&
 			name.length > 0 &&
-			(parsed.kind === null || parsed.kind === "note") &&
+			(kind === null || kind === "note") &&
 			!this.host.isIndexing()
 		) {
 			limited = [this.createHit(name)];
@@ -401,9 +419,12 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	private launcherHits(): SearchHit[] {
 		const paths = [...this.host.data.pins];
 		const pinned = new Set(paths);
-		paths.push(...topFrecent(this.host.data.frecency, Date.now(), LAUNCHER_LIMIT, pinned));
+		// All candidates (frecency is bounded): missing files are skipped
+		// below and must not use up launcher slots.
+		paths.push(...topFrecent(this.host.data.frecency, Date.now(), Number.POSITIVE_INFINITY, pinned));
 		const hits: SearchHit[] = [];
-		for (const path of paths.slice(0, LAUNCHER_LIMIT)) {
+		for (const path of paths) {
+			if (hits.length >= LAUNCHER_LIMIT) break;
 			const file = this.app.vault.getFileByPath(path);
 			if (!file) continue;
 			hits.push({
@@ -464,7 +485,18 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 	/** Unresolved [[wikilinks]] matching the query — creatable ghosts. */
 	private ghostHits(parsed: ParsedQuery, existing: SearchHit[]): SearchHit[] {
-		if (parsed.kind !== null && parsed.kind !== "note") return [];
+		const kind = parsed.kind ?? this.filterState.kind;
+		if (kind !== null && kind !== "note") return [];
+		// Ghosts have no tags, folder, date or body — any filter rules them out.
+		if (
+			parsed.tags.length > 0 ||
+			parsed.pathPrefix !== null ||
+			parsed.modifiedWithinDays !== null ||
+			parsed.excludes.length > 0 ||
+			parsed.excludedPhrases.length > 0
+		) {
+			return [];
+		}
 		const q = fold(parsed.text);
 		if (q.length === 0) return [];
 		const existingTitles = new Set(existing.map((h) => fold(h.basename)));
@@ -530,23 +562,27 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	}
 
 	/**
-	 * Verify quoted phrases verbatim — lazily reading bodies of candidates,
-	 * in parallel batches, stopping once enough results are confirmed or a
-	 * newer keystroke made this run stale.
+	 * Verify quoted (and -"excluded") phrases verbatim — lazily reading
+	 * bodies of candidates, in parallel batches, stopping once enough
+	 * results are confirmed or a newer keystroke made this run stale.
 	 */
 	private async filterByPhrases(
 		hits: SearchHit[],
 		phrases: string[],
+		excludedPhrases: string[],
 		gen: number,
 	): Promise<SearchHit[]> {
 		const folded = phrases.map(fold).filter((p) => p.length > 0);
-		if (folded.length === 0) return hits;
+		const foldedExcluded = excludedPhrases.map(fold).filter((p) => p.length > 0);
+		if (folded.length === 0 && foldedExcluded.length === 0) return hits;
 		const limit = this.host.settings().resultLimit;
 		const candidates = hits.slice(0, PHRASE_CANDIDATE_LIMIT);
 		const kept: SearchHit[] = [];
 		for (let i = 0; i < candidates.length && kept.length < limit; i += PHRASE_BATCH) {
 			const batch = candidates.slice(i, i + PHRASE_BATCH);
-			const verdicts = await Promise.all(batch.map((hit) => this.matchesPhrases(hit, folded)));
+			const verdicts = await Promise.all(
+				batch.map((hit) => this.matchesPhrases(hit, folded, foldedExcluded)),
+			);
 			if (gen !== this.gen) return kept;
 			batch.forEach((hit, k) => {
 				if (verdicts[k] && kept.length < limit) kept.push(hit);
@@ -555,17 +591,27 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		return kept;
 	}
 
-	/** Every (pre-folded) phrase occurs in the title, URL or note body. */
-	private async matchesPhrases(hit: SearchHit, foldedPhrases: readonly string[]): Promise<boolean> {
+	/**
+	 * Every (pre-folded) phrase occurs in the title, URL, note body or
+	 * OCR/PDF text — and no excluded phrase does.
+	 */
+	private async matchesPhrases(
+		hit: SearchHit,
+		foldedPhrases: readonly string[],
+		foldedExcluded: readonly string[],
+	): Promise<boolean> {
 		const haystacks = [fold(hit.basename), fold(hit.url ?? "")];
-		const missing = () => foldedPhrases.filter((p) => !haystacks.some((h) => h.includes(p)));
-		if (missing().length === 0) return true;
-		if (hit.kind !== "note") return false;
-		const text = await this.cachedText(hit.path);
-		if (!text) return false;
-		text.phraseHaystack ??= fold(text.body);
-		haystacks.push(text.phraseHaystack);
-		return missing().length === 0;
+		const found = (p: string) => haystacks.some((h) => h.includes(p));
+		const verdict = () => foldedPhrases.every(found) && !foldedExcluded.some(found);
+		// Exclusions must see the body too; required phrases may stop early.
+		if (foldedExcluded.length === 0 && verdict()) return true;
+		if (hit.kind === "link") return verdict();
+		const text = hit.kind === "note" ? await this.cachedText(hit.path) : this.extractedText(hit.path);
+		if (text) {
+			text.phraseHaystack ??= fold(text.body);
+			haystacks.push(text.phraseHaystack);
+		}
+		return verdict();
 	}
 
 	// --------------------------------------------------------- rendering
@@ -621,7 +667,9 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		const text = hit.kind === "note" ? await this.cachedText(hit.path) : this.extractedText(hit.path);
 		// The row was replaced by a newer search while reading — drop it.
 		if (!text || gen !== this.gen || !el.isConnected) return;
-		const snippet = snippetFrom(text.content, text.folded, needles);
+		// The row is one clipped line: little context before the match, or
+		// the highlight ends up hidden behind the ellipsis.
+		const snippet = snippetFrom(text.content, text.folded, needles, undefined, ROW_SNIPPET_LEAD);
 		if (snippet.text.length === 0 || snippet.ranges.length === 0) return;
 		el.empty();
 		el.addClass("searchosaurus-result-snippet");
@@ -703,14 +751,22 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 				window.open(hit.url);
 				return;
 			}
-			void this.openFileAt(hit, false, hit.line);
+			this.reportOpenFailure(hit, this.openFileAt(hit, false, hit.line));
 			return;
 		}
 		if (hit.kind === "note") {
-			void this.openNoteAtMatch(hit, paneType);
+			this.reportOpenFailure(hit, this.openNoteAtMatch(hit, paneType));
 			return;
 		}
-		void this.app.workspace.openLinkText(hit.path, "", paneType);
+		// By file, not link text: "#" or "^" in a name would parse as a
+		// subpath (and an unresolved link text creates a note).
+		this.reportOpenFailure(hit, this.openFileAt(hit, paneType, undefined));
+	}
+
+	private reportOpenFailure(hit: SearchHit, opening: Promise<void>): void {
+		opening.catch((error: unknown) => {
+			new Notice(`Searchosaurus: could not open “${hit.basename}” — ${errorText(error)}`);
+		});
 	}
 
 	/**
@@ -757,8 +813,12 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 	private async copyLink(hit: SearchHit): Promise<void> {
 		const text = this.linkTextFor(hit, "");
 		if (text === null) return;
-		await navigator.clipboard.writeText(text);
-		new Notice("Link copied.");
+		try {
+			await navigator.clipboard.writeText(text);
+			new Notice("Link copied.");
+		} catch (error) {
+			new Notice(`Searchosaurus: could not copy the link — ${errorText(error)}`);
+		}
 	}
 
 	private linkTextFor(hit: SearchHit, sourcePath: string): string | null {
@@ -856,7 +916,10 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 		const words = this.currentWords;
 		this.previewTimer = window.setTimeout(() => {
 			this.previewTimer = null;
-			void this.preview.show(hit, words);
+			this.preview.show(hit, words).catch((error: unknown) => {
+				console.error("Searchosaurus: preview failed", error);
+				this.preview.clear();
+			});
 		}, PREVIEW_DELAY_MS);
 	}
 
@@ -899,7 +962,7 @@ export class SearchosaurusModal extends SuggestModal<SearchHit> {
 
 	/** The pane is display:none on phones and narrow windows — skip renders. */
 	private previewVisible(): boolean {
-		return !Platform.isPhone && activeWindow.innerWidth >= PREVIEW_MIN_WIDTH;
+		return !Platform.isPhone && this.modalEl.win.innerWidth >= PREVIEW_MIN_WIDTH;
 	}
 
 	private cancelPreview(): void {

@@ -155,7 +155,7 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 			.setName("Search text in images (OCR)")
 			.setDesc(
 				Platform.isDesktop
-					? "Runs fully offline. Enabling downloads the recognition models (~8 MB) once from the plugin's GitHub release; images are then processed in the background and cached."
+					? "Runs fully offline. Enabling downloads the recognition models (~4 MB) once from the plugin's GitHub release; images are then processed in the background and cached."
 					: "OCR runs on desktop only. Text recognized on a desktop is searchable here too if the plugin folder (ocr-cache.json) syncs along.",
 			)
 			.addToggle((toggle) =>
@@ -207,8 +207,11 @@ export class SearchosaurusSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button.setButtonText("Rebuild").onClick(async () => {
 					button.setDisabled(true).setButtonText("Rebuilding…");
-					await this.host.rebuildIndex();
-					button.setDisabled(false).setButtonText("Rebuild");
+					try {
+						await this.host.rebuildIndex();
+					} finally {
+						button.setDisabled(false).setButtonText("Rebuild");
+					}
 				}),
 			);
 	}

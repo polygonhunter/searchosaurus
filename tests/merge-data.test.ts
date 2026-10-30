@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coversData, mergePersistentData } from "../src/core/merge-data";
+import { coversData, mergeCacheEntries, mergePersistentData } from "../src/core/merge-data";
 
 describe("mergePersistentData", () => {
 	it("takes pins from the file, so an unpin elsewhere sticks", () => {
@@ -51,5 +51,29 @@ describe("coversData", () => {
 		expect(coversData(a, { pins: ["b", "a"], searchHistory: [], frecency: {} })).toBe(true);
 		expect(coversData(a, { pins: ["c"], searchHistory: [], frecency: {} })).toBe(false);
 		expect(coversData(a, { pins: [], searchHistory: [], frecency: { x: { count: 2, last: 6 } } })).toBe(false);
+	});
+});
+
+describe("mergeCacheEntries", () => {
+	const entry = (mtime: number, text: string) => ({ mtime, text });
+
+	it("keeps entries another device wrote since we loaded the file", () => {
+		const merged = mergeCacheEntries({ "a.png": entry(1, "a") }, { "b.png": entry(2, "b") }, new Set());
+		expect(Object.keys(merged).sort()).toEqual(["a.png", "b.png"]);
+	});
+
+	it("prefers the newer file version per path", () => {
+		const merged = mergeCacheEntries(
+			{ "a.png": entry(1, "old"), "b.png": entry(5, "mine") },
+			{ "a.png": entry(2, "new"), "b.png": entry(3, "theirs") },
+			new Set(),
+		);
+		expect(merged["a.png"]?.text).toBe("new");
+		expect(merged["b.png"]?.text).toBe("mine");
+	});
+
+	it("does not bring back paths removed here", () => {
+		const merged = mergeCacheEntries({}, { "gone.png": entry(1, "x") }, new Set(["gone.png"]));
+		expect(merged).toEqual({});
 	});
 });

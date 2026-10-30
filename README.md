@@ -58,7 +58,7 @@ Text selected in the editor (one short line) becomes the starting query. Scripts
 
 Searchosaurus ships without a default hotkey. Bind **“Searchosaurus: Open search”** under *Settings → Hotkeys* — `Cmd/Ctrl+F` (replacing “Search current file”) or `Cmd/Ctrl+Shift+F` work well.
 
-To search text inside images, enable **OCR** in the plugin settings: the recognition models (~8 MB) download once from this repository's releases, then everything runs locally. Extracted text is cached in the plugin folder (`ocr-cache.json`). If you sync your vault with a file-based tool (iCloud, Syncthing, Git, …), other devices reuse it and never re-run the work. Obsidian Sync only transfers a plugin's main files, so there each desktop extracts on its own.
+To search text inside images, enable **OCR** in the plugin settings: the recognition models (a ~4 MB download) arrive once from this repository's releases, then everything runs locally. Extracted text is cached in the plugin folder (`ocr-cache.json`). If you sync your vault with a file-based tool (iCloud, Syncthing, Git, …), other devices reuse it and never re-run the work. Obsidian Sync only transfers a plugin's main files, so there each desktop extracts on its own.
 
 ### On your phone
 

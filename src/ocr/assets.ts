@@ -72,7 +72,7 @@ export async function downloadAssets(app: App, manifestDir: string): Promise<voi
 	} catch (error) {
 		notice.hide();
 		new Notice(
-			"Searchosaurus: OCR asset download failed. Check your connection and try again from the settings.",
+			"Searchosaurus: OCR asset download failed. Check your connection, then switch OCR off and on in the settings to retry.",
 			8000,
 		);
 		throw error;

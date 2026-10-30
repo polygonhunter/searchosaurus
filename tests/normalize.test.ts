@@ -30,6 +30,12 @@ describe("processTerm", () => {
 		expect(processTerm("Müller")).toBe("muller");
 	});
 
+	it("splits symbol-joined tokens into separate terms", () => {
+		// The tokenizer keeps "Holt|Miri" (from [[Mira Holt|Miri]]) whole.
+		expect(processTerm("Holt|Miri")).toEqual(["holt", "miri"]);
+		expect(processTerm("a=b")).toEqual(["a", "b"]);
+	});
+
 	it("drops terms that fold to nothing", () => {
 		expect(processTerm("!!!")).toBeNull();
 		expect(processTerm("")).toBeNull();

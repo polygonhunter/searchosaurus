@@ -50,3 +50,24 @@ export function coversData(a: MergeableData, b: MergeableData): boolean {
 	}
 	return true;
 }
+
+/**
+ * Merge the on-disk OCR cache into this device's entries before writing it
+ * back (pure, unit-tested): another device may have added entries since we
+ * loaded the file, and a blind write would drop them. Disk entries win only
+ * when they describe a newer file version; paths removed here since the
+ * last write (deleted/renamed files) are not brought back.
+ */
+export function mergeCacheEntries<T extends { mtime: number }>(
+	local: Record<string, T>,
+	disk: Record<string, T>,
+	removed: ReadonlySet<string>,
+): Record<string, T> {
+	const merged = { ...local };
+	for (const [path, entry] of Object.entries(disk)) {
+		if (removed.has(path)) continue;
+		const own = merged[path];
+		if (!own || entry.mtime > own.mtime) merged[path] = entry;
+	}
+	return merged;
+}

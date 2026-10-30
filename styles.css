@@ -232,6 +232,9 @@
 
 .searchosaurus-preview-image img {
 	max-width: 100%;
+	/* Tall screenshots must not push the recognized text out of view. */
+	max-height: min(40vh, 320px);
+	object-fit: contain;
 	border-radius: var(--radius-m);
 }
 
@@ -286,7 +289,7 @@
 
 /* ---- progressive disclosure: invisible until you reach for it ---- */
 
-/* one faint help line, empty state only */
+/* quiet indexing progress, only while the index is incomplete */
 .searchosaurus-status {
 	display: none;
 	padding: var(--size-4-1) var(--size-4-4);
@@ -299,6 +302,7 @@
 	display: block;
 }
 
+/* one faint help line, empty state only */
 .searchosaurus-hint {
 	display: none;
 	padding: var(--size-4-1) var(--size-4-4) var(--size-4-2);
@@ -443,8 +447,9 @@ body.is-mobile .searchosaurus-filter-button {
 	--icon-size: var(--icon-l, 20px);
 }
 
-/* Keyboard hints and held-modifier badges mean nothing on touch. */
-body.is-mobile .searchosaurus-hint,
+/* Keyboard hints and held-modifier badges mean nothing on touch. The hint
+   selector must outrank the empty-state rule that shows it. */
+body.is-mobile .searchosaurus-modal.is-empty-query .searchosaurus-hint,
 body.is-mobile .searchosaurus-result-index {
 	display: none;
 }

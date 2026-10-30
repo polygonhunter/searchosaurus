@@ -30,15 +30,21 @@ export function fold(text: string): string {
 const PLAIN_TERM_RE = /^[a-z0-9]+$/;
 
 /**
- * processTerm for MiniSearch: folded term, or null to drop the term. Runs
+ * processTerm for MiniSearch: folded term(s), or null to drop the term. Runs
  * for every token of every indexed note — plain ASCII words (the vast
  * majority) skip the NFD/regex pipeline.
+ *
+ * MiniSearch's tokenizer only splits on whitespace and Unicode punctuation,
+ * so symbol-joined tokens ("Holt|Miri" from [[Mira Holt|Miri]], "a=b",
+ * "x+y") arrive whole. fold() turns the symbols into spaces — those words
+ * are returned separately, or "miri" would never be found.
  */
-export function processTerm(term: string): string | null {
+export function processTerm(term: string): string | string[] | null {
 	const lower = term.toLowerCase();
 	if (PLAIN_TERM_RE.test(lower)) return lower;
 	const folded = fold(term);
-	return folded.length > 0 ? folded : null;
+	if (folded.length === 0) return null;
+	return folded.includes(" ") ? folded.split(" ") : folded;
 }
 
 /** Folded whitespace-split words of a query or title. */

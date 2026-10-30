@@ -41,6 +41,8 @@ export function snippetFrom(
 	folded: FoldedText,
 	needles: readonly string[],
 	radius = DEFAULT_RADIUS,
+	/** Context before the match — keep it short where the line is clipped. */
+	lead = radius,
 ): Snippet {
 	const match = needles.length > 0 ? findFirstMatch(folded, needles) : null;
 
@@ -49,7 +51,7 @@ export function snippetFrom(
 		return { text: cleanup(content.slice(0, radius * 2)), ranges: [] };
 	}
 
-	const windowStart = Math.max(0, match[0] - radius);
+	const windowStart = Math.max(0, match[0] - lead);
 	const windowEnd = Math.min(content.length, match[1] + radius);
 	const collapsed = cleanup(content.slice(windowStart, windowEnd));
 	const text = `${windowStart > 0 ? "…" : ""}${collapsed}${windowEnd < content.length ? "…" : ""}`;

@@ -23,14 +23,14 @@ interface StoredShape {
 }
 
 export default class SearchosaurusPlugin extends Plugin {
-	settings: SearchosaurusSettings = { ...DEFAULT_SETTINGS };
+	settings: SearchosaurusSettings = structuredClone(DEFAULT_SETTINGS);
 	data: PersistentData = structuredClone(DEFAULT_DATA);
 
 	private engine: SearchEngine = new SearchEngine(DEFAULT_WEIGHTS);
 	private indexer: Indexer | null = null;
 	private pipeline: OcrPipeline | null = null;
 	/** Settings as last applied — onSettingsChanged diffs against this. */
-	private appliedSettings: SearchosaurusSettings = { ...DEFAULT_SETTINGS };
+	private appliedSettings: SearchosaurusSettings = structuredClone(DEFAULT_SETTINGS);
 	private settingTab: SearchosaurusSettingTab | null = null;
 	/** One shared in-flight asset download, however often OCR is toggled. */
 	private assetsPromise: Promise<boolean> | null = null;
@@ -44,6 +44,7 @@ export default class SearchosaurusPlugin extends Plugin {
 			() => this.settings,
 			this.manifest.dir ?? "",
 			(path, mtime) => this.indexer?.markExtracted(path, mtime),
+			() => this.ensureAssetsOnce(),
 		);
 		this.indexer = new Indexer(
 			this.app,
@@ -122,16 +123,32 @@ export default class SearchosaurusPlugin extends Plugin {
 				this.saveDataSoon();
 			}),
 		);
+		// Deleted files (or folders) leave the launcher's pins and history.
+		this.registerEvent(
+			this.app.vault.on("delete", (file) => {
+				const gone = (path: string) => path === file.path || path.startsWith(`${file.path}/`);
+				const pins = this.data.pins.filter((path) => !gone(path));
+				const stale = Object.keys(this.data.frecency).filter(gone);
+				if (pins.length === this.data.pins.length && stale.length === 0) return;
+				this.data.pins = pins;
+				for (const path of stale) delete this.data.frecency[path];
+				this.saveDataSoon();
+			}),
+		);
 
 		// Index once the workspace (and metadata cache) is ready; search is
 		// usable immediately with whatever the startup cache already holds.
 		this.app.workspace.onLayoutReady(() => {
 			void (async () => {
-				// Independent I/O (IndexedDB snapshot, ocr-cache.json): load
-				// both at once. The pipeline queues consider() calls until
-				// its cache is in, so nothing gets OCR'd twice.
-				await Promise.all([this.pipeline?.init(this), this.indexer?.start(this)]);
-				this.indexer?.healAttachments();
+				try {
+					// Independent I/O (IndexedDB snapshot, ocr-cache.json): load
+					// both at once. The pipeline queues consider() calls until
+					// its cache is in, so nothing gets OCR'd twice.
+					await Promise.all([this.pipeline?.init(this), this.indexer?.start(this)]);
+					this.indexer?.healAttachments();
+				} catch (error) {
+					console.error("Searchosaurus: failed to start indexing", error);
+				}
 			})();
 		});
 	}
@@ -166,7 +183,8 @@ export default class SearchosaurusPlugin extends Plugin {
 					// off so the toggle tells the truth and a retry is a click.
 					// Never for a synced change — saving "off" would sync back
 					// and switch OCR off on every device (this one is merely
-					// offline); jobs wait for the assets until the next start.
+					// offline); the first OCR job of the next start retries the
+					// download.
 					this.settings.ocrEnabled = false;
 					this.appliedSettings = snapshotSettings(this.settings);
 					await this.saveSettings();
@@ -193,14 +211,17 @@ export default class SearchosaurusPlugin extends Plugin {
 	async rebuildIndex(): Promise<void> {
 		const indexer = this.indexer;
 		if (!indexer) return;
+		// Re-indexing hands every attachment to the pipeline again (cache
+		// hit → applied, miss → queued) — no separate scanVault() needed.
 		await indexer.rebuild();
-		this.pipeline?.scanVault();
 		new Notice(`Searchosaurus: index rebuilt — ${indexer.indexedCount.toLocaleString()} files.`);
 	}
 
 	async loadSettings(): Promise<void> {
 		const raw = (await this.loadData()) as Partial<StoredShape> | null;
-		this.settings = { ...DEFAULT_SETTINGS, ...(raw?.settings ?? {}) };
+		// Cloned: a shallow spread would share the default arrays, and the
+		// settings tab edits excludedFolders in place.
+		this.settings = { ...structuredClone(DEFAULT_SETTINGS), ...(raw?.settings ?? {}) };
 		this.data = { ...structuredClone(DEFAULT_DATA), ...(raw?.data ?? {}) };
 		this.appliedSettings = snapshotSettings(this.settings);
 	}
@@ -216,7 +237,7 @@ export default class SearchosaurusPlugin extends Plugin {
 		if (!raw) return;
 		// Mutate in place: an open settings tab holds a reference to
 		// this.settings — a new object would swallow its later edits.
-		Object.assign(this.settings, { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) });
+		Object.assign(this.settings, { ...structuredClone(DEFAULT_SETTINGS), ...(raw.settings ?? {}) });
 		if (this.settingTab?.containerEl.isShown()) this.settingTab.display();
 		const remote = { ...structuredClone(DEFAULT_DATA), ...(raw.data ?? {}) };
 		const merged = mergePersistentData(this.data, remote);

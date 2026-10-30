@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildSnippet } from "../src/core/snippet";
+import { buildSnippet, snippetFrom } from "../src/core/snippet";
+import { foldWithMap, prepareNeedles } from "../src/core/match";
 
 describe("buildSnippet", () => {
 	it("windows around the first match and highlights it", () => {
@@ -62,5 +63,15 @@ describe("buildSnippet folding", () => {
 	it("skips CRLF frontmatter", () => {
 		const snippet = buildSnippet("---\r\ntags: mira\r\n---\r\nBody text mentions mira", ["mira"]);
 		expect(snippet.text).not.toContain("tags");
+	});
+});
+
+describe("snippetFrom lead", () => {
+	it("keeps only `lead` characters before the match", () => {
+		const content = `${"word ".repeat(40)}TARGET ${"tail ".repeat(40)}`;
+		const snippet = snippetFrom(content, foldWithMap(content), prepareNeedles(["target"]), 80, 20);
+		const [start] = snippet.ranges[0]!;
+		expect(start).toBeLessThanOrEqual(22); // "…" + at most 20 chars
+		expect(snippet.text.slice(start, start + 6)).toBe("TARGET");
 	});
 });

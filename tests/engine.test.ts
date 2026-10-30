@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SearchEngine } from "../src/core/engine";
+import { operatorFields, SearchEngine, TITLE_FIELDS } from "../src/core/engine";
 import { DEFAULT_WEIGHTS, type IndexedDoc } from "../src/core/types";
 
 function doc(overrides: Partial<IndexedDoc> & { id: string }): IndexedDoc {
@@ -177,5 +177,32 @@ describe("SearchEngine", () => {
 		const engine = makeEngine();
 		engine.upsert(doc({ id: "a.md", basename: "a" }));
 		expect(engine.search("   ")).toEqual([]);
+	});
+});
+
+describe("SearchEngine — symbol-joined words", () => {
+	it("finds the display text of a [[target|alias]] wikilink", () => {
+		const engine = makeEngine();
+		engine.upsert(doc({ id: "a.md", basename: "a", body: "Met [[Mira Holt|Miri]] today" }));
+		expect(engine.search("miri").map((h) => h.id)).toEqual(["a.md"]);
+		expect(engine.search("holt").map((h) => h.id)).toEqual(["a.md"]);
+	});
+});
+
+describe("operatorFields", () => {
+	it("searches titles for notes and links", () => {
+		expect(operatorFields("note")).toEqual([...TITLE_FIELDS]);
+		expect(operatorFields("link")).toEqual([...TITLE_FIELDS]);
+	});
+
+	it("adds OCR/PDF text for images and files", () => {
+		const engine = makeEngine();
+		engine.upsert(
+			doc({ id: "scan.png", kind: "image", basename: "scan", extractedText: "Rechnung Nr. 42" }),
+		);
+		expect(engine.search("rechnung", { fields: operatorFields("image") }).map((h) => h.id)).toEqual([
+			"scan.png",
+		]);
+		expect(operatorFields("file")).toContain("extractedText");
 	});
 });

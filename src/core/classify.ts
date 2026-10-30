@@ -13,3 +13,13 @@ export function kindForExtension(extension: string): Exclude<ResultKind, "link">
 	if (IMAGE_EXTENSIONS.has(ext)) return "image";
 	return "file";
 }
+
+/**
+ * Formats tesseract can actually decode (Leptonica: no SVG, GIF or AVIF).
+ * Anything else failed on every start, booting the worker for nothing.
+ */
+const OCR_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "bmp"]);
+
+export function isOcrImage(extension: string): boolean {
+	return OCR_EXTENSIONS.has(extension.toLowerCase());
+}
