@@ -1,0 +1,83 @@
+name: Release Obsidian plugin
+
+# Builds the plugin and creates (or refreshes) the GitHub release whose tag
+# matches manifest.json's version, with the main.js / manifest.json /
+# styles.css assets Obsidian needs.
+#
+# Runs automatically on every push to main (project policy: every change
+# bumps the version, so every push produces a new release).
+# workflow_dispatch remains as a manual fallback/retry.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Build plugin
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      # Stamp the version into styles.css so every release's asset content —
+      # and therefore its digest — is unique. Byte-identical assets across
+      # releases share a digest, and the store then also finds the stale
+      # attestations of older releases for that digest.
+      - name: Stamp version into styles.css
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          printf '/* Searchosaurus v%s */\n' "$VERSION" | cat - styles.css > styles.stamped.css
+          mv styles.stamped.css styles.css
+
+      # v1 emits the bundle format the store's verifier accepts (the v4
+      # bundles shipped with earlier -osaurus releases failed store
+      # verification).
+      - name: Attest build provenance for the release assets
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            main.js
+            styles.css
+
+      # Gate: the release is only created if the attestations actually
+      # verify. A broken attestation must fail the workflow, not ship.
+      - name: Verify attestations before publishing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh attestation verify main.js --repo "$GITHUB_REPOSITORY"
+          gh attestation verify styles.css --repo "$GITHUB_REPOSITORY"
+
+      - name: Create or refresh the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" main.js manifest.json styles.css --clobber
+          else
+            gh release create "$VERSION" \
+              --target main \
+              --title "$VERSION" \
+              --notes "Searchosaurus $VERSION" \
+              main.js manifest.json styles.css
+          fi
